@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BIN="./safe-agent"
+PASS=0
+FAIL=0
+
+assert_exit() {
+    local expected="$1"
+    shift
+    local desc="$1"
+    shift
+    set +e
+    "$@" >/dev/null 2>&1
+    local actual="$?"
+    set -e
+    if [ "$actual" -eq "$expected" ]; then
+        echo "PASS: $desc (exit $actual)"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: $desc (expected $expected, got $actual)"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+assert_stderr_contains() {
+    local pattern="$1"
+    shift
+    local desc="$1"
+    shift
+    set +e
+    local output
+    output=$("$@" 2>&1 >/dev/null)
+    local actual="$?"
+    set -e
+    if echo "$output" | grep -F -q -- "$pattern"; then
+        echo "PASS: $desc (matched '$pattern')"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: $desc (expected pattern '$pattern', got output: '$output')"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+echo "=== Running CLI Edge-Case Tests ==="
+
+assert_exit 0 "Help flag --help" "$BIN" --help
+assert_exit 0 "Help flag -h" "$BIN" -h
+assert_exit 1 "No arguments" "$BIN"
+assert_stderr_contains "usage:" "Usage output on no arguments" "$BIN"
+
+assert_exit 1 "Missing --allow-dir" "$BIN" -- echo 1
+assert_stderr_contains "missing required option --allow-dir" "Missing --allow-dir message" "$BIN" -- echo 1
+
+assert_exit 1 "Missing argument to --allow-dir" "$BIN" --allow-dir
+assert_stderr_contains "--allow-dir requires a path argument" "Missing arg message" "$BIN" --allow-dir
+
+assert_exit 1 "Empty string for --allow-dir" "$BIN" --allow-dir "" -- echo 1
+assert_stderr_contains "--allow-dir path must not be empty" "Empty allow-dir message" "$BIN" --allow-dir "" -- echo 1
+
+assert_exit 1 "Duplicate --allow-dir" "$BIN" --allow-dir /tmp --allow-dir /var -- echo 1
+assert_stderr_contains "duplicate --allow-dir option" "Duplicate allow-dir message" "$BIN" --allow-dir /tmp --allow-dir /var -- echo 1
+
+assert_exit 1 "Missing command after --" "$BIN" --allow-dir /tmp --
+assert_stderr_contains "missing command after '--'" "Missing command message" "$BIN" --allow-dir /tmp --
+
+assert_exit 1 "Empty command string after --" "$BIN" --allow-dir /tmp -- ""
+assert_stderr_contains "missing command after '--'" "Empty command message" "$BIN" --allow-dir /tmp -- ""
+
+assert_exit 1 "Unrecognized option" "$BIN" --foo --allow-dir /tmp -- echo 1
+assert_stderr_contains "unrecognized option '--foo'" "Unrecognized option message" "$BIN" --foo --allow-dir /tmp -- echo 1
+
+echo "CLI Tests Completed: $PASS passed, $FAIL failed."
+if [ "$FAIL" -ne 0 ]; then
+    exit 1
+fi

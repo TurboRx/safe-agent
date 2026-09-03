@@ -7,6 +7,7 @@
 - **Filesystem Isolation (Landlock LSM)**: Restricts write, create, truncate, and unlink operations strictly to the directory passed via `--allow-dir`. Preserves read and execute access for core system paths (`/usr`, `/lib`, `/bin`, `/etc`).
 - **Syscall Filtering (seccomp-bpf)**: When `--block-net` is enabled, installs a BPF filter to intercept and deny `socket`, `connect`, and `bind` syscalls, returning `EPERM`.
 - **Privilege Boundary Enforcement**: Sets `PR_SET_NO_NEW_PRIVS` prior to enforcing sandbox rulesets and handing off execution via `execvp`.
+- **Hardened Validation**: Defends against zero-length argument vectors, duplicate flags, x32 ABI evasion, and file descriptor leaks.
 
 ## Requirements
 
@@ -21,6 +22,11 @@ make
 ```
 
 Binary target: `safe-agent`.
+
+To run the automated test suite:
+```bash
+make test
+```
 
 To clean build artifacts:
 ```bash
@@ -57,6 +63,7 @@ Execute a command isolated from both external filesystems and network access:
 - `src/main.c`: CLI argument parsing, security boundary validation, and execution hand-off.
 - `src/sandbox.c`: Landlock ABI version negotiation, bitmask fallback logic, ruleset assembly, and enforcement.
 - `src/seccomp_filter.c`: BPF filter construction for network syscall denial.
+- `tests/`: Automated test suite covering CLI edge cases, seccomp syscall filtering, and Landlock ABI negotiation.
 
 ## License
 

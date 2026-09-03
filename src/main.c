@@ -21,7 +21,13 @@ static void print_usage(const char *prog_name)
 
 int main(int argc, char **argv)
 {
-    const char *prog_name = argv[0];
+    /* security boundary: validate argument array against zero-length execution vulnerabilities */
+    const char *prog_name = (argc > 0 && argv && argv[0]) ? argv[0] : "safe-agent";
+    if (argc < 2) {
+        print_usage(prog_name);
+        return 1;
+    }
+
     const char *allow_dir = NULL;
     bool block_net = false;
     char **command_argv = NULL;
@@ -33,8 +39,18 @@ int main(int argc, char **argv)
             return 0;
         }
         if (strcmp(argv[i], "--allow-dir") == 0) {
+            if (allow_dir != NULL) {
+                fprintf(stderr, "safe-agent: error: duplicate --allow-dir option\n");
+                print_usage(prog_name);
+                return 1;
+            }
             if (i + 1 >= argc) {
                 fprintf(stderr, "safe-agent: error: --allow-dir requires a path argument\n");
+                print_usage(prog_name);
+                return 1;
+            }
+            if (argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --allow-dir path must not be empty\n");
                 print_usage(prog_name);
                 return 1;
             }
@@ -65,7 +81,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!command_argv || !command_argv[0]) {
+    if (!command_argv || !command_argv[0] || command_argv[0][0] == '\0') {
         fprintf(stderr, "safe-agent: error: missing command after '--'\n");
         print_usage(prog_name);
         return 1;

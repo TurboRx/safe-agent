@@ -44,6 +44,12 @@ int sandbox_seccomp_init(void)
 
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 
+#if defined(__x86_64__)
+        /* security boundary: prevent x32 abi syscall evasion on x86_64 */
+        BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000U, 0, 1),
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
+#endif
+
         /* security boundary: return eperm instead of kill to match posix permission denial semantics */
 #ifdef __NR_socket
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1),

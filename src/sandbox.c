@@ -109,8 +109,8 @@ static const char *const system_read_paths[] = {
 
 int sandbox_landlock_init(const char *allow_dir)
 {
-    if (!allow_dir) {
-        fprintf(stderr, "safe-agent: allow_dir is null\n");
+    if (!allow_dir || allow_dir[0] == '\0') {
+        fprintf(stderr, "safe-agent: allow_dir is invalid\n");
         return -1;
     }
 
@@ -139,7 +139,9 @@ int sandbox_landlock_init(const char *allow_dir)
         ruleset_attr.handled_access_fs &= ~LANDLOCK_ACCESS_FS_TRUNCATE;
     }
 
-    int ruleset_fd = sys_landlock_create_ruleset(&ruleset_attr, sizeof(ruleset_attr), 0);
+    /* kernel abi quirk: size of handled_access_fs ensures compatibility across abi v1 through v5 kernels */
+    size_t attr_size = (abi < 4) ? sizeof(ruleset_attr.handled_access_fs) : sizeof(ruleset_attr);
+    int ruleset_fd = sys_landlock_create_ruleset(&ruleset_attr, attr_size, 0);
     if (ruleset_fd < 0) {
         fprintf(stderr, "safe-agent: failed to create landlock ruleset: %s\n", strerror(errno));
         return -1;
