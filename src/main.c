@@ -9,13 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/prctl.h>
 #include <unistd.h>
 
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -31,6 +30,7 @@ int main(int argc, char **argv)
     const char *allow_dir = NULL;
     bool block_net = false;
     bool clean_env = false;
+    unsigned int timeout_seconds = 0;
     char **keep_keys = NULL;
     size_t keep_count = 0;
     size_t keep_cap = 0;
@@ -81,6 +81,27 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--clean-env") == 0) {
             clean_env = true;
             i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--timeout") == 0) {
+            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --timeout requires a seconds argument\n");
+                print_usage(prog_name);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            char *endptr = NULL;
+            long val = strtol(argv[i + 1], &endptr, 10);
+            if (*endptr != '\0' || val <= 0 || val > 86400) {
+                fprintf(stderr, "safe-agent: error: --timeout must be a positive integer between 1 and 86400\n");
+                print_usage(prog_name);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            timeout_seconds = (unsigned int)val;
+            i += 2;
             continue;
         }
         if (strcmp(argv[i], "--env") == 0) {
@@ -176,41 +197,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* security boundary: pr_set_no_new_privs prevents execvp targets from gaining privileges */
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
-        fprintf(stderr, "safe-agent: prctl(PR_SET_NO_NEW_PRIVS) failed: %s\n", strerror(errno));
-        free(keep_keys);
-        free(set_pairs);
-        return 1;
-    }
+    struct sandbox_exec_args exec_args = {
+        .allow_dir = allow_dir,
+        .block_net = block_net,
+        .clean_env = clean_env,
+        .keep_keys = keep_keys,
+        .keep_count = keep_count,
+        .set_pairs = set_pairs,
+        .set_count = set_count,
+        .command_argv = command_argv,
+    };
 
-    if (sandbox_landlock_init(allow_dir) < 0) {
-        free(keep_keys);
-        free(set_pairs);
-        return 1;
-    }
-
-    if (block_net) {
-        if (sandbox_seccomp_init() < 0) {
-            free(keep_keys);
-            free(set_pairs);
-            return 1;
-        }
-    }
-
-    if (sandbox_env_apply(clean_env, keep_keys, keep_count, set_pairs, set_count) < 0) {
-        free(keep_keys);
-        free(set_pairs);
-        return 1;
-    }
+    int exit_code = sandbox_supervisor_execute(timeout_seconds, &exec_args);
 
     free(keep_keys);
     free(set_pairs);
 
-    /* security boundary: execvp transfers control to target command replacing current image */
-    execvp(command_argv[0], command_argv);
-
-    fprintf(stderr, "safe-agent: failed to execute '%s': %s\n",
-            command_argv[0], strerror(errno));
-    return (errno == ENOENT) ? 127 : 126;
+    return exit_code;
 }

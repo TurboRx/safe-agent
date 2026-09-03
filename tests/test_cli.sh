@@ -86,3 +86,15 @@ assert_stderr_contains "--keep-env requires a KEY argument" "Missing keep-env ar
 
 assert_exit 1 "Invalid keep-env name containing =" "$BIN" --allow-dir /tmp --keep-env FOO=BAR -- echo 1
 assert_stderr_contains "--keep-env requires a valid variable name" "Invalid keep-env message" "$BIN" --allow-dir /tmp --keep-env FOO=BAR -- echo 1
+
+assert_exit 1 "Missing arg to --timeout" "$BIN" --allow-dir /tmp --timeout -- echo 1
+assert_stderr_contains "--timeout requires a seconds argument" "Missing timeout arg message" "$BIN" --allow-dir /tmp --timeout -- echo 1
+
+assert_exit 1 "Invalid zero --timeout" "$BIN" --allow-dir /tmp --timeout 0 -- echo 1
+assert_stderr_contains "--timeout must be a positive integer" "Invalid zero timeout message" "$BIN" --allow-dir /tmp --timeout 0 -- echo 1
+
+assert_exit 1 "Invalid negative --timeout" "$BIN" --allow-dir /tmp --timeout -5 -- echo 1
+assert_stderr_contains "--timeout must be a positive integer" "Invalid negative timeout message" "$BIN" --allow-dir /tmp --timeout -5 -- echo 1
+
+assert_exit 1 "Invalid non-numeric --timeout" "$BIN" --allow-dir /tmp --timeout abc -- echo 1
+assert_stderr_contains "--timeout must be a positive integer" "Invalid non-numeric timeout message" "$BIN" --allow-dir /tmp --timeout abc -- echo 1
