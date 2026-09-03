@@ -24,6 +24,10 @@
 #define LANDLOCK_RULE_PATH_BENEATH 1
 #endif
 
+#ifndef LANDLOCK_RULE_NET_PORT
+#define LANDLOCK_RULE_NET_PORT 2
+#endif
+
 #ifndef LANDLOCK_ACCESS_FS_EXECUTE
 #define LANDLOCK_ACCESS_FS_EXECUTE (1ULL << 0)
 #define LANDLOCK_ACCESS_FS_WRITE_FILE (1ULL << 1)
@@ -46,6 +50,14 @@
 
 #ifndef LANDLOCK_ACCESS_FS_TRUNCATE
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
+#endif
+
+#ifndef LANDLOCK_ACCESS_NET_BIND_TCP
+#define LANDLOCK_ACCESS_NET_BIND_TCP (1ULL << 0)
+#endif
+
+#ifndef LANDLOCK_ACCESS_NET_CONNECT_TCP
+#define LANDLOCK_ACCESS_NET_CONNECT_TCP (1ULL << 1)
 #endif
 
 #ifndef __NR_landlock_create_ruleset
@@ -112,6 +124,20 @@ int sandbox_landlock_init_paths(char *const *allow_dirs,
                                 char *const *ro_dirs,
                                 size_t ro_dir_count)
 {
+    return sandbox_landlock_init_full(allow_dirs, allow_dir_count,
+                                     ro_dirs, ro_dir_count,
+                                     NULL, 0, NULL, 0);
+}
+
+int sandbox_landlock_init_full(char *const *allow_dirs,
+                              size_t allow_dir_count,
+                              char *const *ro_dirs,
+                              size_t ro_dir_count,
+                              const unsigned int *net_connect_ports,
+                              size_t net_connect_count,
+                              const unsigned int *net_bind_ports,
+                              size_t net_bind_count)
+{
     if (!allow_dirs || allow_dir_count == 0) {
         fprintf(stderr, "safe-agent: at least one allow directory is required\n");
         return -1;
@@ -125,6 +151,11 @@ int sandbox_landlock_init_paths(char *const *allow_dirs,
     }
     if (abi < 1) {
         fprintf(stderr, "safe-agent: landlock abi version %d unsupported\n", abi);
+        return -1;
+    }
+
+    if ((net_connect_count > 0 || net_bind_count > 0) && abi < 4) {
+        fprintf(stderr, "safe-agent: landlock network port filtering requires abi v4 or higher (kernel >= 6.5, detected v%d)\n", abi);
         return -1;
     }
 
@@ -142,8 +173,23 @@ int sandbox_landlock_init_paths(char *const *allow_dirs,
         ruleset_attr.handled_access_fs &= ~LANDLOCK_ACCESS_FS_TRUNCATE;
     }
 
+    if (abi >= 4 && (net_connect_count > 0 || net_bind_count > 0)) {
+        /* kernel abi quirk: handled_access_net requires abi v4 or higher */
+        /* security boundary: all unlisted tcp ports are denied by default once handled_access_net is set */
+        ruleset_attr.handled_access_net = 0;
+        if (net_connect_count > 0) {
+            ruleset_attr.handled_access_net |= LANDLOCK_ACCESS_NET_CONNECT_TCP;
+        }
+        if (net_bind_count > 0) {
+            ruleset_attr.handled_access_net |= LANDLOCK_ACCESS_NET_BIND_TCP;
+        }
+    }
+
     /* kernel abi quirk: size of handled_access_fs ensures compatibility across abi v1 through v5 kernels */
-    size_t attr_size = (abi < 4) ? sizeof(ruleset_attr.handled_access_fs) : sizeof(ruleset_attr);
+    size_t attr_size = (abi < 4 && net_connect_count == 0 && net_bind_count == 0)
+                           ? sizeof(ruleset_attr.handled_access_fs)
+                           : sizeof(ruleset_attr);
+
     int ruleset_fd = sys_landlock_create_ruleset(&ruleset_attr, attr_size, 0);
     if (ruleset_fd < 0) {
         fprintf(stderr, "safe-agent: failed to create landlock ruleset: %s\n", strerror(errno));
@@ -249,6 +295,32 @@ int sandbox_landlock_init_paths(char *const *allow_dirs,
 
         if (close(sys_fd) < 0) {
             fprintf(stderr, "safe-agent: failed to close system path fd: %s\n", strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
+    }
+
+    for (size_t i = 0; i < net_connect_count; i++) {
+        struct landlock_net_port_attr port_attr = {
+            .allowed_access = LANDLOCK_ACCESS_NET_CONNECT_TCP,
+            .port = net_connect_ports[i],
+        };
+        if (sys_landlock_add_rule(ruleset_fd, LANDLOCK_RULE_NET_PORT, &port_attr, 0) < 0) {
+            fprintf(stderr, "safe-agent: failed to add connect rule for port %u: %s\n",
+                    net_connect_ports[i], strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
+    }
+
+    for (size_t i = 0; i < net_bind_count; i++) {
+        struct landlock_net_port_attr port_attr = {
+            .allowed_access = LANDLOCK_ACCESS_NET_BIND_TCP,
+            .port = net_bind_ports[i],
+        };
+        if (sys_landlock_add_rule(ruleset_fd, LANDLOCK_RULE_NET_PORT, &port_attr, 0) < 0) {
+            fprintf(stderr, "safe-agent: failed to add bind rule for port %u: %s\n",
+                    net_bind_ports[i], strerror(errno));
             close(ruleset_fd);
             return -1;
         }

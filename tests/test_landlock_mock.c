@@ -21,9 +21,16 @@
 #ifndef LANDLOCK_ACCESS_FS_TRUNCATE
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
 #endif
+#ifndef LANDLOCK_ACCESS_NET_BIND_TCP
+#define LANDLOCK_ACCESS_NET_BIND_TCP (1ULL << 0)
+#endif
+#ifndef LANDLOCK_ACCESS_NET_CONNECT_TCP
+#define LANDLOCK_ACCESS_NET_CONNECT_TCP (1ULL << 1)
+#endif
 
 static int g_mock_abi_version = 3;
 static uint64_t g_last_handled_access_fs = 0;
+static uint64_t g_last_handled_access_net = 0;
 static size_t g_last_attr_size = 0;
 static int g_add_rule_calls = 0;
 static int g_restrict_self_calls = 0;
@@ -49,6 +56,7 @@ long syscall(long number, ...)
         }
 
         g_last_handled_access_fs = attr->handled_access_fs;
+        g_last_handled_access_net = (size >= sizeof(struct landlock_ruleset_attr)) ? attr->handled_access_net : 0;
         g_last_attr_size = size;
 
         return open("/dev/null", O_RDONLY | O_CLOEXEC);
@@ -112,9 +120,29 @@ int main(void)
     char *ro_dirs[] = { "/usr" };
     int res_multi = sandbox_landlock_init_paths(allow_dirs, 2, ro_dirs, 1);
     assert(res_multi == 0);
-    /* rules: 2 allow + 1 ro + system paths */
     assert(g_add_rule_calls >= 3);
     printf("PASS: Multiple allow and ro directories configured\n");
+
+    /* test abi v4 network port filtering */
+    g_mock_abi_version = 4;
+    g_add_rule_calls = 0;
+    unsigned int connect_ports[] = { 443, 80 };
+    unsigned int bind_ports[] = { 8080 };
+    int res_net = sandbox_landlock_init_full(allow_dirs, 2, ro_dirs, 1,
+                                            connect_ports, 2,
+                                            bind_ports, 1);
+    assert(res_net == 0);
+    assert((g_last_handled_access_net & LANDLOCK_ACCESS_NET_CONNECT_TCP) != 0);
+    assert((g_last_handled_access_net & LANDLOCK_ACCESS_NET_BIND_TCP) != 0);
+    printf("PASS: ABI v4 configures TCP connect and bind port rules\n");
+
+    /* test abi v3 rejecting net port filtering */
+    g_mock_abi_version = 3;
+    int res_net_fail = sandbox_landlock_init_full(allow_dirs, 2, ro_dirs, 1,
+                                                 connect_ports, 2,
+                                                 bind_ports, 1);
+    assert(res_net_fail == -1);
+    printf("PASS: ABI v3 cleanly rejects network port filtering with diagnostic\n");
 
     g_mock_abi_version = 0;
     int res4 = sandbox_landlock_init("/tmp");

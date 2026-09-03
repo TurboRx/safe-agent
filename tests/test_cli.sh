@@ -117,3 +117,18 @@ assert_stderr_contains "--max-procs requires a positive integer" "Missing max-pr
 
 assert_exit 1 "Missing arg to --max-files" "$BIN" --allow-dir /tmp --max-files -- echo 1
 assert_stderr_contains "--max-files requires a positive integer" "Missing max-files arg message" "$BIN" --allow-dir /tmp --max-files -- echo 1
+
+assert_exit 1 "Missing arg to --allow-net-connect" "$BIN" --allow-dir /tmp --allow-net-connect -- echo 1
+assert_stderr_contains "--allow-net-connect requires a valid port" "Missing connect port message" "$BIN" --allow-dir /tmp --allow-net-connect -- echo 1
+
+assert_exit 1 "Invalid non-numeric --allow-net-connect" "$BIN" --allow-dir /tmp --allow-net-connect foo -- echo 1
+assert_stderr_contains "--allow-net-connect requires a valid port" "Invalid connect port non-numeric" "$BIN" --allow-dir /tmp --allow-net-connect foo -- echo 1
+
+assert_exit 1 "Invalid out of range --allow-net-connect" "$BIN" --allow-dir /tmp --allow-net-connect 70000 -- echo 1
+assert_stderr_contains "--allow-net-connect requires a valid port" "Invalid connect port range" "$BIN" --allow-dir /tmp --allow-net-connect 70000 -- echo 1
+
+assert_exit 1 "Missing arg to --allow-net-bind" "$BIN" --allow-dir /tmp --allow-net-bind -- echo 1
+assert_stderr_contains "--allow-net-bind requires a valid port" "Missing bind port message" "$BIN" --allow-dir /tmp --allow-net-bind -- echo 1
+
+assert_exit 1 "Invalid zero port --allow-net-bind" "$BIN" --allow-dir /tmp --allow-net-bind 0 -- echo 1
+assert_stderr_contains "--allow-net-bind requires a valid port" "Invalid bind port zero" "$BIN" --allow-dir /tmp --allow-net-bind 0 -- echo 1

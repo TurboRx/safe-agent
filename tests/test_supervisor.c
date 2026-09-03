@@ -8,15 +8,23 @@
 #include <stdio.h>
 #include <unistd.h>
 
-int sandbox_landlock_init_paths(char *const *allow_dirs,
-                                size_t allow_dir_count,
-                                char *const *ro_dirs,
-                                size_t ro_dir_count)
+int sandbox_landlock_init_full(char *const *allow_dirs,
+                              size_t allow_dir_count,
+                              char *const *ro_dirs,
+                              size_t ro_dir_count,
+                              const unsigned int *net_connect_ports,
+                              size_t net_connect_count,
+                              const unsigned int *net_bind_ports,
+                              size_t net_bind_count)
 {
     (void)allow_dirs;
     (void)allow_dir_count;
     (void)ro_dirs;
     (void)ro_dir_count;
+    (void)net_connect_ports;
+    (void)net_connect_count;
+    (void)net_bind_ports;
+    (void)net_bind_count;
     return 0;
 }
 
@@ -24,11 +32,6 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
 {
     (void)block_net;
     (void)block_tiocsti;
-    return 0;
-}
-
-int sandbox_seccomp_init_unused(void)
-{
     return 0;
 }
 
@@ -45,12 +48,18 @@ int main(void)
         .allow_dir_count = 1,
         .ro_dirs = NULL,
         .ro_dir_count = 0,
+        .net_connect_ports = NULL,
+        .net_connect_count = 0,
+        .net_bind_ports = NULL,
+        .net_bind_count = 0,
         .block_net = false,
+        .block_tiocsti = false,
         .clean_env = false,
         .keep_keys = NULL,
         .keep_count = 0,
         .set_pairs = NULL,
         .set_count = 0,
+        .rlimits = {0},
         .command_argv = cmd1,
     };
     int res1 = sandbox_supervisor_execute(3, &args1);
@@ -64,12 +73,18 @@ int main(void)
         .allow_dir_count = 1,
         .ro_dirs = NULL,
         .ro_dir_count = 0,
+        .net_connect_ports = NULL,
+        .net_connect_count = 0,
+        .net_bind_ports = NULL,
+        .net_bind_count = 0,
         .block_net = false,
+        .block_tiocsti = false,
         .clean_env = false,
         .keep_keys = NULL,
         .keep_count = 0,
         .set_pairs = NULL,
         .set_count = 0,
+        .rlimits = {0},
         .command_argv = cmd2,
     };
     int res2 = sandbox_supervisor_execute(1, &args2);
@@ -83,12 +98,18 @@ int main(void)
         .allow_dir_count = 1,
         .ro_dirs = NULL,
         .ro_dir_count = 0,
+        .net_connect_ports = NULL,
+        .net_connect_count = 0,
+        .net_bind_ports = NULL,
+        .net_bind_count = 0,
         .block_net = false,
+        .block_tiocsti = false,
         .clean_env = false,
         .keep_keys = NULL,
         .keep_count = 0,
         .set_pairs = NULL,
         .set_count = 0,
+        .rlimits = {0},
         .command_argv = cmd3,
     };
     int res3 = sandbox_supervisor_execute(3, &args3);

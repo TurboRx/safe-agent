@@ -39,8 +39,10 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
         return 1;
     }
 
-    if (sandbox_landlock_init_paths(args->allow_dirs, args->allow_dir_count,
-                                   args->ro_dirs, args->ro_dir_count) < 0) {
+    if (sandbox_landlock_init_full(args->allow_dirs, args->allow_dir_count,
+                                  args->ro_dirs, args->ro_dir_count,
+                                  args->net_connect_ports, args->net_connect_count,
+                                  args->net_bind_ports, args->net_bind_count) < 0) {
         return 1;
     }
 
