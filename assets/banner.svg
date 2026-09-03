@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070a12" />
+      <stop offset="50%" stop-color="#0c1322" />
+      <stop offset="100%" stop-color="#060910" />
+    </linearGradient>
+
+    <linearGradient id="accent-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+
+    <linearGradient id="shield-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+
+    <linearGradient id="glow-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+    </linearGradient>
+
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#1e293b" stroke-width="0.75" stroke-opacity="0.35" />
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="300" fill="url(#bg-grad)" rx="16" />
+  <rect width="1200" height="300" fill="url(#grid)" rx="16" />
+
+  <!-- Ambient Glow -->
+  <ellipse cx="600" cy="0" rx="420" ry="110" fill="url(#glow-grad)" />
+
+  <!-- Border -->
+  <rect width="1198" height="298" x="1" y="1" fill="none" stroke="#334155" stroke-width="1.5" stroke-opacity="0.55" rx="15" />
+
+  <!-- Shield Icon Container -->
+  <g transform="translate(110, 68)">
+    <path d="M 50 0 L 100 25 L 100 95 C 100 135 50 165 50 165 C 50 165 0 135 0 95 L 0 25 Z" fill="#0f172a" stroke="url(#shield-grad)" stroke-width="3.5" filter="drop-shadow(0 0 15px rgba(56,189,248,0.25))" />
+    <path d="M 32 60 L 52 75 L 32 90" fill="none" stroke="#38bdf8" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="58" y1="90" x2="72" y2="90" stroke="#06b6d4" stroke-width="4.5" stroke-linecap="round" />
+  </g>
+
+  <!-- Title safe-agent -->
+  <text x="250" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="64" font-weight="900" letter-spacing="-1.5" fill="#f8fafc">
+    safe<tspan fill="url(#accent-cyan)">-agent</tspan>
+  </text>
+
+  <!-- Subtitle / Mission -->
+  <text x="252" y="174" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="20" font-weight="500" fill="#94a3b8" letter-spacing="0.2">
+    Kernel-Enforced Linux Security Sandbox for Autonomous AI Agents
+  </text>
+
+  <!-- Architecture / Pillars -->
+  <g transform="translate(252, 210)">
+    <rect width="490" height="32" rx="16" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+    <text x="22" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#cbd5e1" letter-spacing="0.3">
+      Defense-in-Depth Isolation  •  Zero Dependencies  •  Written in C11
+    </text>
+  </g>
+</svg>

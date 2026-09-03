@@ -1,10 +1,19 @@
-# safe-agent
+<p align="center">
+  <img src="assets/banner.svg" alt="safe-agent banner" width="100%">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/kernel-%3E%3D%205.13-brightgreen.svg" alt="Linux Kernel"></a>
+  <a href="#build"><img src="https://img.shields.io/badge/language-C11-orange.svg" alt="Language: C11"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg" alt="Contributions Welcome"></a>
+</p>
 
 `safe-agent` is a Linux security sandbox binary designed for constrained AI agent command execution using Landlock LSM, seccomp-bpf, resource quotas, and unprivileged namespaces.
 
 ## Features
 
-- **Filesystem Isolation (Landlock LSM)**: Restricts write, create, truncate, and unlink operations strictly to directories passed via `--allow-dir`. Supports multiple `--allow-dir` paths and read-only directory overlays via `--ro-dir`. Preserves read and execute access for system libraries and binaries (`/usr`, `/lib`, `/bin`, `/etc`).
+- **Filesystem Isolation (Landlock LSM)**: Restricts write, create, truncate, and unlink operations strictly to directories passed via `--allow-dir`. Supports multiple `--allow-dir` paths and read-only directory overlays via `--ro-dir`. Preserves read and execute access for system libraries and binaries (`/usr`, `/lib`, `/bin`, `/etc`, `/dev`).
 - **Ephemeral In-Memory Mounts (`--tmpfs`)**: Mounts RAM-backed scratch filesystems (`tmpfs`) over specified directories in an unprivileged mount namespace. Files created during execution are discarded upon exit with zero disk persistence.
 - **Syscall Filtering (seccomp-bpf)**:
   - `--block-net`: Installs a BPF filter intercepting and denying `socket`, `connect`, `bind`, and `socketcall` syscalls with `EPERM`.
@@ -135,6 +144,12 @@ audit-log=/workspace/audit.json
 - `src/profile.c`: Declarative configuration profile parser and argument expander.
 - `src/cgroup.c`: cgroups v2 controller setup and process attachment.
 - `tests/`: Automated test suite covering CLI validation, seccomp filters, Landlock mock syscall routing, environment sanitization, process supervision, resource limits, namespaces, output quotas, telemetry, and profiles.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for code conventions, testing requirements, and pull request procedures.
+
+For security vulnerabilities and disclosure guidelines, refer to [SECURITY.md](SECURITY.md).
 
 ## License
 
