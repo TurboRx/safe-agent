@@ -52,6 +52,7 @@ struct sandbox_exec_args {
     char *const *set_pairs;
     size_t set_count;
     struct sandbox_rlimits rlimits;
+    size_t max_output_bytes;
     char **command_argv;
 };
 

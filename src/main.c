@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -95,6 +95,7 @@ int main(int argc, char **argv)
     bool harden_sys = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
+    size_t max_output_bytes = 0;
     bool timeout_set = false;
     struct sandbox_rlimits rlimits = {0};
     char **command_argv = NULL;
@@ -264,6 +265,18 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--clean-env") == 0) {
             clean_env = true;
             i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--max-output") == 0) {
+            unsigned long val = 0;
+            if (i + 1 >= argc || parse_ulong(argv[i + 1], &val) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-output requires a positive integer (bytes)\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                return 1;
+            }
+            max_output_bytes = (size_t)val;
+            i += 2;
             continue;
         }
         if (strcmp(argv[i], "--timeout") == 0) {
@@ -445,6 +458,7 @@ int main(int argc, char **argv)
         .set_pairs = allocs.set_pairs,
         .set_count = set_count,
         .rlimits = rlimits,
+        .max_output_bytes = max_output_bytes,
         .command_argv = command_argv,
     };
 

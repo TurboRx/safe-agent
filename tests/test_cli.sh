@@ -155,3 +155,13 @@ assert_stderr_contains "--tmpfs path must not be empty" "Empty tmpfs message" "$
 
 assert_exit 1 "Tmpfs flag accepted with missing command" "$BIN" --allow-dir /tmp --tmpfs /tmp --
 assert_stderr_contains "missing command after '--'" "Tmpfs flag recognized" "$BIN" --allow-dir /tmp --tmpfs /tmp --
+
+# test max-output flag
+assert_exit 1 "Missing arg to --max-output" "$BIN" --allow-dir /tmp --max-output -- echo 1
+assert_stderr_contains "--max-output requires a positive integer" "Missing max-output arg message" "$BIN" --allow-dir /tmp --max-output -- echo 1
+
+assert_exit 1 "Invalid non-numeric --max-output" "$BIN" --allow-dir /tmp --max-output abc -- echo 1
+assert_stderr_contains "--max-output requires a positive integer" "Invalid max-output message" "$BIN" --allow-dir /tmp --max-output abc -- echo 1
+
+assert_exit 1 "Max-output flag accepted with missing command" "$BIN" --allow-dir /tmp --max-output 1024 --
+assert_stderr_contains "missing command after '--'" "Max-output flag recognized" "$BIN" --allow-dir /tmp --max-output 1024 --

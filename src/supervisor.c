@@ -5,6 +5,8 @@
 #include "sandbox.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,13 +83,23 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
 int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args)
 {
-    if (timeout_seconds == 0 && !args->new_pid) {
-        /* security boundary: when no timeout is set, execute directly without supervisor overhead */
+    if (timeout_seconds == 0 && !args->new_pid && args->max_output_bytes == 0) {
+        /* security boundary: when no timeout, pid isolation, or output quota is set, execute directly */
         return sandbox_child_execute(args);
     }
 
     if (args->new_pid) {
         if (sandbox_pidns_unshare() < 0) {
+            return 1;
+        }
+    }
+
+    int pipe_out[2] = { -1, -1 };
+    int pipe_err[2] = { -1, -1 };
+    if (args->max_output_bytes > 0) {
+        if (pipe2(pipe_out, O_CLOEXEC) < 0 || pipe2(pipe_err, O_CLOEXEC) < 0) {
+            fprintf(stderr, "safe-agent: failed to create output quota pipes: %s\n", strerror(errno));
+            if (pipe_out[0] >= 0) { close(pipe_out[0]); close(pipe_out[1]); }
             return 1;
         }
     }
@@ -103,12 +115,20 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
         sigaction(SIGINT, &sa, NULL) < 0 ||
         sigaction(SIGTERM, &sa, NULL) < 0) {
         fprintf(stderr, "safe-agent: failed to set up signal handlers: %s\n", strerror(errno));
+        if (args->max_output_bytes > 0) {
+            close(pipe_out[0]); close(pipe_out[1]);
+            close(pipe_err[0]); close(pipe_err[1]);
+        }
         return 1;
     }
 
     pid_t pid = fork();
     if (pid < 0) {
         fprintf(stderr, "safe-agent: fork failed: %s\n", strerror(errno));
+        if (args->max_output_bytes > 0) {
+            close(pipe_out[0]); close(pipe_out[1]);
+            close(pipe_err[0]); close(pipe_err[1]);
+        }
         return 1;
     }
 
@@ -125,6 +145,13 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
             _exit(1);
         }
 
+        if (args->max_output_bytes > 0) {
+            dup2(pipe_out[1], STDOUT_FILENO);
+            dup2(pipe_err[1], STDERR_FILENO);
+            close(pipe_out[0]); close(pipe_out[1]);
+            close(pipe_err[0]); close(pipe_err[1]);
+        }
+
         int child_res = sandbox_child_execute(args);
         _exit(child_res);
     }
@@ -132,6 +159,71 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
     g_supervised_child = pid;
     if (timeout_seconds > 0) {
         alarm(timeout_seconds);
+    }
+
+    bool quota_exceeded = false;
+    if (args->max_output_bytes > 0) {
+        close(pipe_out[1]);
+        close(pipe_err[1]);
+
+        size_t total_bytes = 0;
+        struct pollfd pfds[2] = {
+            { .fd = pipe_out[0], .events = POLLIN },
+            { .fd = pipe_err[0], .events = POLLIN },
+        };
+        int open_pipes = 2;
+
+        while (open_pipes > 0) {
+            int ret = poll(pfds, 2, -1);
+            if (ret < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+
+            for (int p = 0; p < 2; p++) {
+                if (pfds[p].fd < 0) continue;
+
+                if (pfds[p].revents & POLLIN) {
+                    char buf[4096];
+                    ssize_t n = read(pfds[p].fd, buf, sizeof(buf));
+                    if (n > 0) {
+                        int out_fd = (p == 0) ? STDOUT_FILENO : STDERR_FILENO;
+                        size_t to_write = (size_t)n;
+                        if (total_bytes + to_write > args->max_output_bytes) {
+                            to_write = args->max_output_bytes - total_bytes;
+                            quota_exceeded = true;
+                        }
+                        if (to_write > 0) {
+                            ssize_t wr = write(out_fd, buf, to_write);
+                            (void)wr;
+                        }
+                        total_bytes += (size_t)n;
+
+                        if (total_bytes >= args->max_output_bytes) {
+                            quota_exceeded = true;
+                            kill(-pid, SIGKILL);
+                            kill(pid, SIGKILL);
+                            close(pipe_out[0]);
+                            close(pipe_err[0]);
+                            pfds[0].fd = -1;
+                            pfds[1].fd = -1;
+                            open_pipes = 0;
+                            break;
+                        }
+                    } else if (n == 0) {
+                        close(pfds[p].fd);
+                        pfds[p].fd = -1;
+                        open_pipes--;
+                    }
+                } else if (pfds[p].revents & (POLLHUP | POLLERR)) {
+                    close(pfds[p].fd);
+                    pfds[p].fd = -1;
+                    open_pipes--;
+                }
+            }
+        }
+        if (pfds[0].fd >= 0) close(pfds[0].fd);
+        if (pfds[1].fd >= 0) close(pfds[1].fd);
     }
 
     int status = 0;
@@ -145,6 +237,12 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
 
     if (timeout_seconds > 0) {
         alarm(0);
+    }
+
+    if (quota_exceeded) {
+        fprintf(stderr, "safe-agent: command exceeded maximum output quota of %zu bytes\n",
+                args->max_output_bytes);
+        return 125;
     }
 
     if (g_timed_out) {
