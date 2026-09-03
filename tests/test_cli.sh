@@ -58,8 +58,6 @@ assert_stderr_contains "--allow-dir requires a path argument" "Missing arg messa
 assert_exit 1 "Empty string for --allow-dir" "$BIN" --allow-dir "" -- echo 1
 assert_stderr_contains "--allow-dir path must not be empty" "Empty allow-dir message" "$BIN" --allow-dir "" -- echo 1
 
-assert_exit 1 "Duplicate --allow-dir" "$BIN" --allow-dir /tmp --allow-dir /var -- echo 1
-assert_stderr_contains "duplicate --allow-dir option" "Duplicate allow-dir message" "$BIN" --allow-dir /tmp --allow-dir /var -- echo 1
 
 assert_exit 1 "Missing command after --" "$BIN" --allow-dir /tmp --
 assert_stderr_contains "missing command after '--'" "Missing command message" "$BIN" --allow-dir /tmp --
@@ -98,3 +96,9 @@ assert_stderr_contains "--timeout must be a positive integer" "Invalid negative 
 
 assert_exit 1 "Invalid non-numeric --timeout" "$BIN" --allow-dir /tmp --timeout abc -- echo 1
 assert_stderr_contains "--timeout must be a positive integer" "Invalid non-numeric timeout message" "$BIN" --allow-dir /tmp --timeout abc -- echo 1
+
+assert_exit 1 "Missing arg to --ro-dir" "$BIN" --allow-dir /tmp --ro-dir -- echo 1
+assert_stderr_contains "--ro-dir requires a path argument" "Missing ro-dir arg message" "$BIN" --allow-dir /tmp --ro-dir -- echo 1
+
+assert_exit 1 "Empty string for --ro-dir" "$BIN" --allow-dir /tmp --ro-dir "" -- echo 1
+assert_stderr_contains "--ro-dir path must not be empty" "Empty ro-dir message" "$BIN" --allow-dir /tmp --ro-dir "" -- echo 1

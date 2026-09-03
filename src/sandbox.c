@@ -107,10 +107,13 @@ static const char *const system_read_paths[] = {
     "/lib64",
 };
 
-int sandbox_landlock_init(const char *allow_dir)
+int sandbox_landlock_init_paths(char *const *allow_dirs,
+                                size_t allow_dir_count,
+                                char *const *ro_dirs,
+                                size_t ro_dir_count)
 {
-    if (!allow_dir || allow_dir[0] == '\0') {
-        fprintf(stderr, "safe-agent: allow_dir is invalid\n");
+    if (!allow_dirs || allow_dir_count == 0) {
+        fprintf(stderr, "safe-agent: at least one allow directory is required\n");
         return -1;
     }
 
@@ -147,33 +150,76 @@ int sandbox_landlock_init(const char *allow_dir)
         return -1;
     }
 
-    /* kernel abi quirk: parent_fd must refer to a directory opened with o_path | o_directory | o_cloexec */
-    int allow_fd = open(allow_dir, O_PATH | O_DIRECTORY | O_CLOEXEC);
-    if (allow_fd < 0) {
-        fprintf(stderr, "safe-agent: failed to open allow directory '%s': %s\n",
-                allow_dir, strerror(errno));
-        close(ruleset_fd);
-        return -1;
+    for (size_t i = 0; i < allow_dir_count; i++) {
+        if (!allow_dirs[i] || allow_dirs[i][0] == '\0') {
+            fprintf(stderr, "safe-agent: allow directory path is invalid\n");
+            close(ruleset_fd);
+            return -1;
+        }
+
+        /* kernel abi quirk: parent_fd must refer to a directory opened with o_path | o_directory | o_cloexec */
+        int allow_fd = open(allow_dirs[i], O_PATH | O_DIRECTORY | O_CLOEXEC);
+        if (allow_fd < 0) {
+            fprintf(stderr, "safe-agent: failed to open allow directory '%s': %s\n",
+                    allow_dirs[i], strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
+
+        /* security boundary: rule access rights must be a subset of ruleset handled_access_fs to avoid einval */
+        struct landlock_path_beneath_attr allow_path_attr = {
+            .parent_fd = allow_fd,
+            .allowed_access = ACCESS_FS_RW & ruleset_attr.handled_access_fs,
+        };
+
+        if (sys_landlock_add_rule(ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, &allow_path_attr, 0) < 0) {
+            fprintf(stderr, "safe-agent: failed to add landlock rule for allow directory '%s': %s\n",
+                    allow_dirs[i], strerror(errno));
+            close(allow_fd);
+            close(ruleset_fd);
+            return -1;
+        }
+
+        if (close(allow_fd) < 0) {
+            fprintf(stderr, "safe-agent: failed to close allow directory fd: %s\n", strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
     }
 
-    /* security boundary: rule access rights must be a subset of ruleset handled_access_fs to avoid einval */
-    struct landlock_path_beneath_attr allow_path_attr = {
-        .parent_fd = allow_fd,
-        .allowed_access = ACCESS_FS_RW & ruleset_attr.handled_access_fs,
-    };
+    for (size_t i = 0; i < ro_dir_count; i++) {
+        if (!ro_dirs[i] || ro_dirs[i][0] == '\0') {
+            fprintf(stderr, "safe-agent: read-only directory path is invalid\n");
+            close(ruleset_fd);
+            return -1;
+        }
 
-    if (sys_landlock_add_rule(ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, &allow_path_attr, 0) < 0) {
-        fprintf(stderr, "safe-agent: failed to add landlock rule for allow directory '%s': %s\n",
-                allow_dir, strerror(errno));
-        close(allow_fd);
-        close(ruleset_fd);
-        return -1;
-    }
+        int ro_fd = open(ro_dirs[i], O_PATH | O_DIRECTORY | O_CLOEXEC);
+        if (ro_fd < 0) {
+            fprintf(stderr, "safe-agent: failed to open read-only directory '%s': %s\n",
+                    ro_dirs[i], strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
 
-    if (close(allow_fd) < 0) {
-        fprintf(stderr, "safe-agent: failed to close allow directory fd: %s\n", strerror(errno));
-        close(ruleset_fd);
-        return -1;
+        struct landlock_path_beneath_attr ro_path_attr = {
+            .parent_fd = ro_fd,
+            .allowed_access = ACCESS_FS_RO & ruleset_attr.handled_access_fs,
+        };
+
+        if (sys_landlock_add_rule(ruleset_fd, LANDLOCK_RULE_PATH_BENEATH, &ro_path_attr, 0) < 0) {
+            fprintf(stderr, "safe-agent: failed to add landlock rule for read-only directory '%s': %s\n",
+                    ro_dirs[i], strerror(errno));
+            close(ro_fd);
+            close(ruleset_fd);
+            return -1;
+        }
+
+        if (close(ro_fd) < 0) {
+            fprintf(stderr, "safe-agent: failed to close read-only directory fd: %s\n", strerror(errno));
+            close(ruleset_fd);
+            return -1;
+        }
     }
 
     for (size_t i = 0; i < sizeof(system_read_paths) / sizeof(system_read_paths[0]); i++) {
@@ -227,4 +273,11 @@ int sandbox_landlock_init(const char *allow_dir)
     }
 
     return 0;
+}
+
+int sandbox_landlock_init(const char *allow_dir)
+{
+    char *dirs[1];
+    dirs[0] = (char *)allow_dir;
+    return sandbox_landlock_init_paths(dirs, 1, NULL, 0);
 }

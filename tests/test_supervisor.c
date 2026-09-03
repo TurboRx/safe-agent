@@ -8,9 +8,15 @@
 #include <stdio.h>
 #include <unistd.h>
 
-int sandbox_landlock_init(const char *allow_dir)
+int sandbox_landlock_init_paths(char *const *allow_dirs,
+                                size_t allow_dir_count,
+                                char *const *ro_dirs,
+                                size_t ro_dir_count)
 {
-    (void)allow_dir;
+    (void)allow_dirs;
+    (void)allow_dir_count;
+    (void)ro_dirs;
+    (void)ro_dir_count;
     return 0;
 }
 
@@ -23,10 +29,15 @@ int main(void)
 {
     printf("=== Running Process Timeout & Supervisor Tests ===\n");
 
+    char *dirs[] = { "/tmp" };
+
     /* test 1: fast command succeeds */
     char *cmd1[] = { "/bin/true", NULL };
     struct sandbox_exec_args args1 = {
-        .allow_dir = "/tmp",
+        .allow_dirs = dirs,
+        .allow_dir_count = 1,
+        .ro_dirs = NULL,
+        .ro_dir_count = 0,
         .block_net = false,
         .clean_env = false,
         .keep_keys = NULL,
@@ -42,7 +53,10 @@ int main(void)
     /* test 2: slow command triggers timeout */
     char *cmd2[] = { "/bin/sleep", "10", NULL };
     struct sandbox_exec_args args2 = {
-        .allow_dir = "/tmp",
+        .allow_dirs = dirs,
+        .allow_dir_count = 1,
+        .ro_dirs = NULL,
+        .ro_dir_count = 0,
         .block_net = false,
         .clean_env = false,
         .keep_keys = NULL,
@@ -58,7 +72,10 @@ int main(void)
     /* test 3: command exiting with non-zero code */
     char *cmd3[] = { "/bin/sh", "-c", "exit 42", NULL };
     struct sandbox_exec_args args3 = {
-        .allow_dir = "/tmp",
+        .allow_dirs = dirs,
+        .allow_dir_count = 1,
+        .ro_dirs = NULL,
+        .ro_dir_count = 0,
         .block_net = false,
         .clean_env = false,
         .keep_keys = NULL,

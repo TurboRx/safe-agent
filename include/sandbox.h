@@ -5,13 +5,19 @@
 #include <stddef.h>
 
 struct sandbox_config {
-    const char *allow_dir;
+    char *const *allow_dirs;
+    size_t allow_dir_count;
+    char *const *ro_dirs;
+    size_t ro_dir_count;
     bool block_net;
     char *const *command_argv;
 };
 
 struct sandbox_exec_args {
-    const char *allow_dir;
+    char *const *allow_dirs;
+    size_t allow_dir_count;
+    char *const *ro_dirs;
+    size_t ro_dir_count;
     bool block_net;
     bool clean_env;
     char *const *keep_keys;
@@ -22,6 +28,11 @@ struct sandbox_exec_args {
 };
 
 int sandbox_landlock_init(const char *allow_dir);
+int sandbox_landlock_init_paths(char *const *allow_dirs,
+                                size_t allow_dir_count,
+                                char *const *ro_dirs,
+                                size_t ro_dir_count);
+
 int sandbox_seccomp_init(void);
 
 int sandbox_env_apply(bool clean_env,

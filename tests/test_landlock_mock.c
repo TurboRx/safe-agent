@@ -106,6 +106,16 @@ int main(void)
     assert(g_last_attr_size == sizeof(uint64_t));
     printf("PASS: ABI v3 retains both REFER and TRUNCATE\n");
 
+    /* test multiple allow and ro directories */
+    g_add_rule_calls = 0;
+    char *allow_dirs[] = { "/tmp", "/var/tmp" };
+    char *ro_dirs[] = { "/usr" };
+    int res_multi = sandbox_landlock_init_paths(allow_dirs, 2, ro_dirs, 1);
+    assert(res_multi == 0);
+    /* rules: 2 allow + 1 ro + system paths */
+    assert(g_add_rule_calls >= 3);
+    printf("PASS: Multiple allow and ro directories configured\n");
+
     g_mock_abi_version = 0;
     int res4 = sandbox_landlock_init("/tmp");
     assert(res4 == -1);

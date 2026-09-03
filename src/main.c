@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -27,7 +27,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    const char *allow_dir = NULL;
+    char **allow_dirs = NULL;
+    size_t allow_dir_count = 0;
+    size_t allow_dir_cap = 0;
+
+    char **ro_dirs = NULL;
+    size_t ro_dir_count = 0;
+    size_t ro_dir_cap = 0;
+
     bool block_net = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
@@ -43,21 +50,18 @@ int main(int argc, char **argv)
     while (i < argc) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(prog_name);
+            free(allow_dirs);
+            free(ro_dirs);
             free(keep_keys);
             free(set_pairs);
             return 0;
         }
         if (strcmp(argv[i], "--allow-dir") == 0) {
-            if (allow_dir != NULL) {
-                fprintf(stderr, "safe-agent: error: duplicate --allow-dir option\n");
-                print_usage(prog_name);
-                free(keep_keys);
-                free(set_pairs);
-                return 1;
-            }
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --allow-dir requires a path argument\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -65,11 +69,64 @@ int main(int argc, char **argv)
             if (argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --allow-dir path must not be empty\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
             }
-            allow_dir = argv[i + 1];
+            if (allow_dir_count == allow_dir_cap) {
+                size_t new_cap = (allow_dir_cap == 0) ? 4 : allow_dir_cap * 2;
+                char **tmp = realloc(allow_dirs, new_cap * sizeof(char *));
+                if (!tmp) {
+                    fprintf(stderr, "safe-agent: out of memory for allow dirs\n");
+                    free(allow_dirs);
+                    free(ro_dirs);
+                    free(keep_keys);
+                    free(set_pairs);
+                    return 1;
+                }
+                allow_dirs = tmp;
+                allow_dir_cap = new_cap;
+            }
+            allow_dirs[allow_dir_count++] = argv[i + 1];
+            i += 2;
+            continue;
+        }
+        if (strcmp(argv[i], "--ro-dir") == 0) {
+            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --ro-dir requires a path argument\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            if (argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --ro-dir path must not be empty\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            if (ro_dir_count == ro_dir_cap) {
+                size_t new_cap = (ro_dir_cap == 0) ? 4 : ro_dir_cap * 2;
+                char **tmp = realloc(ro_dirs, new_cap * sizeof(char *));
+                if (!tmp) {
+                    fprintf(stderr, "safe-agent: out of memory for ro dirs\n");
+                    free(allow_dirs);
+                    free(ro_dirs);
+                    free(keep_keys);
+                    free(set_pairs);
+                    return 1;
+                }
+                ro_dirs = tmp;
+                ro_dir_cap = new_cap;
+            }
+            ro_dirs[ro_dir_count++] = argv[i + 1];
             i += 2;
             continue;
         }
@@ -87,6 +144,8 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --timeout requires a seconds argument\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -96,6 +155,8 @@ int main(int argc, char **argv)
             if (*endptr != '\0' || val <= 0 || val > 86400) {
                 fprintf(stderr, "safe-agent: error: --timeout must be a positive integer between 1 and 86400\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -108,6 +169,8 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --env requires a KEY=VAL argument\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -116,6 +179,8 @@ int main(int argc, char **argv)
             if (!eq || eq == argv[i + 1]) {
                 fprintf(stderr, "safe-agent: error: --env requires format KEY=VAL with non-empty KEY\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -125,6 +190,8 @@ int main(int argc, char **argv)
                 char **tmp = realloc(set_pairs, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for env pairs\n");
+                    free(allow_dirs);
+                    free(ro_dirs);
                     free(keep_keys);
                     free(set_pairs);
                     return 1;
@@ -140,6 +207,8 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a KEY argument\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -147,6 +216,8 @@ int main(int argc, char **argv)
             if (argv[i + 1][0] == '\0' || strchr(argv[i + 1], '=')) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a valid variable name\n");
                 print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
                 free(keep_keys);
                 free(set_pairs);
                 return 1;
@@ -156,6 +227,8 @@ int main(int argc, char **argv)
                 char **tmp = realloc(keep_keys, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for keep env\n");
+                    free(allow_dirs);
+                    free(ro_dirs);
                     free(keep_keys);
                     free(set_pairs);
                     return 1;
@@ -176,14 +249,18 @@ int main(int argc, char **argv)
         }
         fprintf(stderr, "safe-agent: error: unrecognized option '%s'\n", argv[i]);
         print_usage(prog_name);
+        free(allow_dirs);
+        free(ro_dirs);
         free(keep_keys);
         free(set_pairs);
         return 1;
     }
 
-    if (!allow_dir) {
+    if (allow_dir_count == 0) {
         fprintf(stderr, "safe-agent: error: missing required option --allow-dir\n");
         print_usage(prog_name);
+        free(allow_dirs);
+        free(ro_dirs);
         free(keep_keys);
         free(set_pairs);
         return 1;
@@ -192,13 +269,18 @@ int main(int argc, char **argv)
     if (!command_argv || !command_argv[0] || command_argv[0][0] == '\0') {
         fprintf(stderr, "safe-agent: error: missing command after '--'\n");
         print_usage(prog_name);
+        free(allow_dirs);
+        free(ro_dirs);
         free(keep_keys);
         free(set_pairs);
         return 1;
     }
 
     struct sandbox_exec_args exec_args = {
-        .allow_dir = allow_dir,
+        .allow_dirs = allow_dirs,
+        .allow_dir_count = allow_dir_count,
+        .ro_dirs = ro_dirs,
+        .ro_dir_count = ro_dir_count,
         .block_net = block_net,
         .clean_env = clean_env,
         .keep_keys = keep_keys,
@@ -210,6 +292,8 @@ int main(int argc, char **argv)
 
     int exit_code = sandbox_supervisor_execute(timeout_seconds, &exec_args);
 
+    free(allow_dirs);
+    free(ro_dirs);
     free(keep_keys);
     free(set_pairs);
 
