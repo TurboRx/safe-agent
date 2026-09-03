@@ -1,0 +1,4 @@
+safe-agent
+*.o
+src/*.o
+.DS_Store
