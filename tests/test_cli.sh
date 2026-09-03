@@ -74,3 +74,15 @@ echo "CLI Tests Completed: $PASS passed, $FAIL failed."
 if [ "$FAIL" -ne 0 ]; then
     exit 1
 fi
+
+assert_exit 1 "Missing arg to --env" "$BIN" --allow-dir /tmp --env -- echo 1
+assert_stderr_contains "--env requires a KEY=VAL argument" "Missing env arg message" "$BIN" --allow-dir /tmp --env -- echo 1
+
+assert_exit 1 "Invalid format for --env" "$BIN" --allow-dir /tmp --env INVALID -- echo 1
+assert_stderr_contains "--env requires format KEY=VAL" "Invalid env format message" "$BIN" --allow-dir /tmp --env INVALID -- echo 1
+
+assert_exit 1 "Missing arg to --keep-env" "$BIN" --allow-dir /tmp --keep-env -- echo 1
+assert_stderr_contains "--keep-env requires a KEY argument" "Missing keep-env arg message" "$BIN" --allow-dir /tmp --keep-env -- echo 1
+
+assert_exit 1 "Invalid keep-env name containing =" "$BIN" --allow-dir /tmp --keep-env FOO=BAR -- echo 1
+assert_stderr_contains "--keep-env requires a valid variable name" "Invalid keep-env message" "$BIN" --allow-dir /tmp --keep-env FOO=BAR -- echo 1
