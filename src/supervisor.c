@@ -85,7 +85,7 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
 int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args)
 {
-    if (timeout_seconds == 0 && !args->new_pid && args->max_output_bytes == 0 && !args->audit_log_path) {
+    if (timeout_seconds == 0 && !args->new_pid && args->max_output_bytes == 0 && !args->audit_log_path && !args->cgroup_path) {
         /* security boundary: when no supervisor features are requested, execute directly */
         return sandbox_child_execute(args);
     }
@@ -159,6 +159,15 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
 
         int child_res = sandbox_child_execute(args);
         _exit(child_res);
+    }
+
+    bool cgroup_created = false;
+    if (args->cgroup_path) {
+        if (sandbox_cgroup_setup(args->cgroup_path, &args->rlimits, pid, &cgroup_created) < 0) {
+            kill(pid, SIGKILL);
+            waitpid(pid, NULL, 0);
+            return 1;
+        }
     }
 
     g_supervised_child = pid;
@@ -248,6 +257,10 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
 
     if (timeout_seconds > 0) {
         alarm(0);
+    }
+
+    if (args->cgroup_path) {
+        sandbox_cgroup_cleanup(args->cgroup_path, cgroup_created);
     }
 
     int exit_code = 1;

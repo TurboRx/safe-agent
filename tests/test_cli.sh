@@ -185,3 +185,13 @@ assert_stderr_contains "--profile path must not be empty" "Empty profile message
 
 assert_exit 1 "Non-existent profile file" "$BIN" --profile /nonexistent/profile.conf -- echo 1
 assert_stderr_contains "failed to open profile file" "Non-existent profile message" "$BIN" --profile /nonexistent/profile.conf -- echo 1
+
+# test cgroup flag
+assert_exit 1 "Missing arg to --cgroup" "$BIN" --allow-dir /tmp --cgroup -- echo 1
+assert_stderr_contains "--cgroup requires a path argument" "Missing cgroup arg message" "$BIN" --allow-dir /tmp --cgroup -- echo 1
+
+assert_exit 1 "Empty string for --cgroup" "$BIN" --allow-dir /tmp --cgroup "" -- echo 1
+assert_stderr_contains "--cgroup path must not be empty" "Empty cgroup message" "$BIN" --allow-dir /tmp --cgroup "" -- echo 1
+
+assert_exit 1 "Cgroup flag accepted with missing command" "$BIN" --allow-dir /tmp --cgroup /tmp/cg --
+assert_stderr_contains "missing command after '--'" "Cgroup flag recognized" "$BIN" --allow-dir /tmp --cgroup /tmp/cg --

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/resource.h>
+#include <unistd.h>
 
 struct sandbox_rlimits {
     unsigned long max_mem_mb;
@@ -28,6 +29,7 @@ struct sandbox_config {
     bool block_tiocsti;
     bool harden_sys;
     bool new_pid;
+    const char *cgroup_path;
     const char *audit_log_path;
     char *const *command_argv;
 };
@@ -55,6 +57,7 @@ struct sandbox_exec_args {
     size_t set_count;
     struct sandbox_rlimits rlimits;
     size_t max_output_bytes;
+    const char *cgroup_path;
     const char *audit_log_path;
     char **command_argv;
 };
@@ -80,6 +83,12 @@ int sandbox_netns_drop(void);
 int sandbox_pidns_unshare(void);
 int sandbox_mountns_apply(char *const *tmpfs_paths, size_t tmpfs_count);
 
+int sandbox_cgroup_setup(const char *cgroup_path,
+                         const struct sandbox_rlimits *limits,
+                         pid_t pid,
+                         bool *created_out);
+int sandbox_cgroup_cleanup(const char *cgroup_path, bool was_created);
+
 int sandbox_env_apply(bool clean_env,
                       char *const *keep_keys,
                       size_t keep_count,
@@ -97,11 +106,11 @@ int sandbox_audit_write(const char *path,
                         double wall_ms,
                         const struct rusage *ru);
 
+int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_argv);
+void sandbox_profile_free(int expanded_argc, char **expanded_argv, char **orig_argv);
+
 int sandbox_child_execute(const struct sandbox_exec_args *args);
 int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args);
 
 #endif
-
-int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_argv);
-void sandbox_profile_free(int expanded_argc, char **expanded_argv, char **orig_argv);

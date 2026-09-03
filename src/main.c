@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s [--profile <path>] --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--audit-log <path>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s [--profile <path>] --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--cgroup <path>] [--audit-log <path>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -104,6 +104,7 @@ int main(int argc, char **argv)
     bool timeout_set = false;
     size_t max_output_bytes = 0;
     const char *audit_log_path = NULL;
+    const char *cgroup_path = NULL;
     struct sandbox_rlimits rlimits = {0};
     char **command_argv = NULL;
 
@@ -329,6 +330,25 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
+        if (strcmp(eff_argv[i], "--cgroup") == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --cgroup requires a path argument\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
+                return 1;
+            }
+            if (eff_argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --cgroup path must not be empty\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
+                return 1;
+            }
+            cgroup_path = eff_argv[i + 1];
+            i += 2;
+            continue;
+        }
         if (strcmp(eff_argv[i], "--audit-log") == 0) {
             if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --audit-log requires a path argument\n");
@@ -518,6 +538,7 @@ int main(int argc, char **argv)
         .rlimits = rlimits,
         .max_output_bytes = max_output_bytes,
         .audit_log_path = audit_log_path,
+        .cgroup_path = cgroup_path,
         .command_argv = command_argv,
     };
 
