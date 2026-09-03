@@ -28,10 +28,11 @@ int sandbox_landlock_init_full(char *const *allow_dirs,
     return 0;
 }
 
-int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
+int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys)
 {
     (void)block_net;
     (void)block_tiocsti;
+    (void)harden_sys;
     return 0;
 }
 

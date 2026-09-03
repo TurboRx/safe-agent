@@ -37,9 +37,9 @@
 #error "unsupported seccomp architecture"
 #endif
 
-int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
+int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys)
 {
-    if (!block_net && !block_tiocsti) {
+    if (!block_net && !block_tiocsti && !harden_sys) {
         return 0;
     }
 
@@ -49,7 +49,7 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
         return -1;
     }
 
-    struct sock_filter filter[64];
+    struct sock_filter filter[128];
     size_t idx = 0;
 
     /* kernel abi quirk: validate architecture to prevent cross-arch syscall number confusion */
@@ -72,7 +72,7 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
         filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, TIOCSTI, 1, 0);
         filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, TIOCLINUX, 0, 1);
         filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
-        if (block_net) {
+        if (block_net || harden_sys) {
             filter[idx++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr)));
         }
     }
@@ -100,6 +100,59 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
 #endif
     }
 
+    if (harden_sys) {
+        /* security boundary: harden-sys denies high-risk kernel interfaces with eperm */
+#ifdef __NR_ptrace
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_process_vm_readv
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_process_vm_writev
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_userfaultfd
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_userfaultfd, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_keyctl
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_keyctl, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_bpf
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bpf, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_personality
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_personality, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_syslog
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syslog, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_kexec_load
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_kexec_load, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_kexec_file_load
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_kexec_file_load, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+    }
+
     filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
 
     struct sock_fprog prog = {
@@ -117,5 +170,5 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
 
 int sandbox_seccomp_init(void)
 {
-    return sandbox_seccomp_apply(true, false);
+    return sandbox_seccomp_apply(true, false, false);
 }

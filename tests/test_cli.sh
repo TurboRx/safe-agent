@@ -137,3 +137,7 @@ echo "CLI Tests Completed: $PASS passed, $FAIL failed."
 if [ "$FAIL" -ne 0 ]; then
     exit 1
 fi
+
+# test harden-sys flag acceptance
+assert_exit 1 "Harden-sys flag accepted with missing command" "$BIN" --allow-dir /tmp --harden-sys --
+assert_stderr_contains "missing command after '--'" "Harden-sys flag recognized" "$BIN" --allow-dir /tmp --harden-sys --

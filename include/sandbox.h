@@ -23,6 +23,7 @@ struct sandbox_config {
     bool block_net;
     bool drop_net;
     bool block_tiocsti;
+    bool harden_sys;
     char *const *command_argv;
 };
 
@@ -38,6 +39,7 @@ struct sandbox_exec_args {
     bool block_net;
     bool drop_net;
     bool block_tiocsti;
+    bool harden_sys;
     bool clean_env;
     char *const *keep_keys;
     size_t keep_count;
@@ -62,7 +64,7 @@ int sandbox_landlock_init_full(char *const *allow_dirs,
                               size_t net_bind_count);
 
 int sandbox_seccomp_init(void);
-int sandbox_seccomp_apply(bool block_net, bool block_tiocsti);
+int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys);
 
 int sandbox_netns_drop(void);
 

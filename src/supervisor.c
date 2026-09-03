@@ -53,8 +53,8 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
         return 1;
     }
 
-    if (args->block_net || args->block_tiocsti) {
-        if (sandbox_seccomp_apply(args->block_net, args->block_tiocsti) < 0) {
+    if (args->block_net || args->block_tiocsti || args->harden_sys) {
+        if (sandbox_seccomp_apply(args->block_net, args->block_tiocsti, args->harden_sys) < 0) {
             return 1;
         }
     }
