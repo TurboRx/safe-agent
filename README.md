@@ -4,16 +4,27 @@
 
 ## Features
 
-- **Filesystem Isolation (Landlock LSM)**: Restricts write, create, truncate, and unlink operations strictly to directories passed via `--allow-dir`. Supports multiple `--allow-dir` paths and read-only directory paths via `--ro-dir`. Preserves read and execute access for system libraries and binaries (`/usr`, `/lib`, `/bin`, `/etc`).
+- **Filesystem Isolation (Landlock LSM)**: Restricts write, create, truncate, and unlink operations strictly to directories passed via `--allow-dir`. Supports multiple `--allow-dir` paths and read-only directory overlays via `--ro-dir`. Preserves read and execute access for system libraries and binaries (`/usr`, `/lib`, `/bin`, `/etc`).
+- **Ephemeral In-Memory Mounts (`--tmpfs`)**: Mounts RAM-backed scratch filesystems (`tmpfs`) over specified directories in an unprivileged mount namespace. Files created during execution are discarded upon exit with zero disk persistence.
 - **Syscall Filtering (seccomp-bpf)**:
-  - When `--block-net` is enabled, installs a BPF filter intercepting and denying `socket`, `connect`, and `bind` syscalls with `EPERM`.
-  - When `--block-tiocsti` is enabled, traps `TIOCSTI` and `TIOCLINUX` `ioctl` commands to prevent terminal input injection sandbox escapes.
+  - `--block-net`: Installs a BPF filter intercepting and denying `socket`, `connect`, `bind`, and `socketcall` syscalls with `EPERM`.
+  - `--harden-sys`: Traps high-risk kernel interfaces with `EPERM`, including `ptrace`, `process_vm_readv`, `process_vm_writev`, `userfaultfd`, `keyctl`, `bpf`, and `personality`.
+  - `--block-tiocsti`: Traps `TIOCSTI` and `TIOCLINUX` `ioctl` commands to prevent terminal input injection sandbox escapes.
   - Validates system architecture (x86_64, aarch64, arm, i386, riscv64) and blocks x32 ABI evasion on x86_64.
 - **Port-Level TCP Filtering (Landlock ABI v4+)**: Allows fine-grained outbound TCP connections via `--allow-net-connect <port>` and local socket binding via `--allow-net-bind <port>`. Denies all unlisted TCP ports by default.
-- **Network Namespace Isolation**: `--drop-net` creates an unprivileged network namespace via `unshare(CLONE_NEWUSER | CLONE_NEWNET)`, isolating the command in a network stack with no interfaces.
+- **Namespace Isolation**:
+  - `--drop-net`: Unshares network namespace via `unshare(CLONE_NEWUSER | CLONE_NEWNET)`, isolating the command in a network stack with no network interfaces.
+  - `--new-pid`: Unshares PID namespace via `unshare(CLONE_NEWUSER | CLONE_NEWPID)`, isolating the process table with the command running as PID 1.
+- **Process Supervision & Timeouts**:
+  - `--timeout <sec>`: Terminates the child process group via `SIGKILL` upon expiry, exiting with code 124.
+  - Forwards `SIGINT` and `SIGTERM` signals to cleanly terminate all descendant processes.
+- **Stream Output Quotas (`--max-output`)**: Pipes stdout and stderr through non-blocking supervisor monitors, terminating the process group with code 125 if aggregate output exceeds the specified byte quota.
+- **Resource Limits & cgroups v2**:
+  - `setrlimit`: Per-process virtual memory (`--max-mem <mb>`), CPU time (`--max-cpu <sec>`), process count (`--max-procs <n>`), and open files (`--max-files <n>`).
+  - `--cgroup <path>`: Hierarchical resource bounding via cgroups v2 controllers (`memory.max`, `pids.max`).
+- **Execution Telemetry (`--audit-log`)**: Emits structured JSON audit records containing wall-clock execution duration, CPU usage (`user_cpu_ms`, `sys_cpu_ms`), peak RSS (`max_rss_kb`), page faults, context switches, exit code, and active sandbox configuration.
+- **Declarative Policy Profiles (`--profile`)**: Loads sandbox constraints from configuration files, simplifying invocation in automated pipelines.
 - **Environment Sanitization**: `--clean-env` scrubs host environment variables, restoring a deterministic baseline `PATH=/usr/bin:/bin`. Specific variables can be preserved via `--keep-env KEY` or injected via `--env KEY=VAL`.
-- **Process Supervision & Timeouts**: `--timeout <sec>` forks a supervisor process that monitors the execution tree, terminates the child process group via `SIGKILL` upon expiry, and exits with code 124.
-- **Resource Quotas (`setrlimit`)**: Enforces memory limits (`--max-mem <mb>`), CPU execution time (`--max-cpu <sec>`), maximum process/thread count (`--max-procs <n>`), and open file limits (`--max-files <n>`).
 - **Privilege Boundary Enforcement**: Sets `PR_SET_NO_NEW_PRIVS` prior to applying filters and transferring control via `execvp`.
 
 ## Requirements
@@ -50,17 +61,24 @@ make clean
 
 | Option | Description |
 | --- | --- |
+| `--profile <path>` | Load sandbox configuration options from a profile file. |
 | `--allow-dir <path>` | Writable directory hierarchy (can be specified multiple times). |
 | `--ro-dir <path>` | Read-only directory hierarchy (can be specified multiple times). |
+| `--tmpfs <path>` | Mount ephemeral in-memory tmpfs over directory (can be specified multiple times). |
 | `--allow-net-connect <port>` | Allow outbound TCP connection to port (Landlock ABI v4+). |
 | `--allow-net-bind <port>` | Allow local TCP bind to port (Landlock ABI v4+). |
 | `--block-net` | Block socket creation, bind, and connect via seccomp-bpf. |
 | `--drop-net` | Unshare network namespace to an isolated stack with no network interfaces. |
+| `--new-pid` | Unshare PID namespace with sandboxed command executing as PID 1. |
 | `--block-tiocsti` | Block `TIOCSTI` and `TIOCLINUX` terminal injection `ioctl` calls. |
+| `--harden-sys` | Block dangerous syscalls (`ptrace`, `process_vm_readv`, `keyctl`, `bpf`). |
 | `--clean-env` | Clear all environment variables before running command. |
 | `--env KEY=VAL` | Set environment variable inside sandbox (can be specified multiple times). |
 | `--keep-env KEY` | Preserve specific host environment variable when `--clean-env` is active. |
 | `--timeout <sec>` | Kill command process group if execution exceeds specified seconds. |
+| `--max-output <bytes>` | Terminate process group if combined stdout/stderr output exceeds byte quota. |
+| `--audit-log <path>` | Write structured JSON execution telemetry and resource accounting. |
+| `--cgroup <path>` | Attach process group to specified cgroups v2 directory. |
 | `--max-mem <mb>` | Limit virtual memory address space (`RLIMIT_AS`) in megabytes. |
 | `--max-cpu <sec>` | Limit CPU process time (`RLIMIT_CPU`) in seconds. |
 | `--max-procs <n>` | Limit process and thread count (`RLIMIT_NPROC`). |
@@ -69,37 +87,54 @@ make clean
 
 ### Examples
 
-Run a test suite with filesystem writes restricted to `/workspace` and host environment scrubbed:
+Run an AI agent evaluation with isolated PID table, ephemeral `/tmp`, scrubbed environment, and telemetry logging:
 ```bash
-./safe-agent --allow-dir /workspace --clean-env --keep-env PATH -- make test
+./safe-agent --allow-dir /workspace --tmpfs /tmp --new-pid --harden-sys --clean-env --keep-env PATH --audit-log /workspace/run.json -- python3 eval.py
 ```
 
-Execute an AI agent task with network completely dropped and a 30-second timeout:
+Execute an untrusted build with a 60-second timeout, 10MB output quota, and restricted memory:
 ```bash
-./safe-agent --allow-dir /workspace --drop-net --timeout 30 -- python3 agent_task.py
+./safe-agent --allow-dir /workspace --ro-dir /opt/toolchain --timeout 60 --max-output 10485760 --max-mem 2048 -- ./build.sh
 ```
 
-Constrain an untrusted build process with resource limits and terminal injection protection:
+Execute using a declarative policy profile:
 ```bash
-./safe-agent --allow-dir /workspace --ro-dir /opt/toolchain --max-mem 2048 --max-cpu 60 --max-procs 64 --block-tiocsti -- ./build.sh
+./safe-agent --profile agent-runner.conf -- python3 main.py
 ```
 
-Allow outbound network access strictly to HTTPS (port 443) and HTTP (port 80) on Landlock ABI v4+ kernels:
-```bash
-./safe-agent --allow-dir /workspace --allow-net-connect 443 --allow-net-connect 80 -- curl https://example.com
+Example `agent-runner.conf`:
+```ini
+# agent security baseline
+allow-dir=/workspace
+tmpfs=/tmp
+drop-net
+new-pid
+harden-sys
+block-tiocsti
+clean-env
+keep-env=PATH
+timeout=120
+max-mem=4096
+max-output=5242880
+audit-log=/workspace/audit.json
 ```
 
 ## Architecture
 
 - `include/sandbox.h`: Interface definitions and configuration structures.
-- `src/main.c`: CLI argument parsing, security boundary validation, and supervisor orchestration.
+- `src/main.c`: CLI argument parsing, security boundary validation, and orchestration.
 - `src/sandbox.c`: Landlock ABI version negotiation, bitmask fallback logic, and network port filtering.
-- `src/seccomp_filter.c`: BPF filter construction for network syscall denial and terminal injection defense.
+- `src/seccomp_filter.c`: BPF filter construction for network denial, terminal injection defense, and syscall hardening.
 - `src/env.c`: Environment sanitization and variable preservation logic.
-- `src/supervisor.c`: Process supervision, process group termination, and timeout enforcement.
+- `src/supervisor.c`: Process supervision, process group termination, timeout enforcement, and output quotas.
 - `src/rlimit.c`: Resource quota enforcement via `setrlimit`.
-- `src/netns.c`: Unprivileged network namespace isolation via `unshare(CLONE_NEWUSER | CLONE_NEWNET)`.
-- `tests/`: Automated test suite covering CLI validation, seccomp filters, Landlock mock syscall routing, environment sanitization, process supervision, resource limits, and network namespaces.
+- `src/netns.c`: Unprivileged network namespace isolation (`CLONE_NEWNET`).
+- `src/pidns.c`: Unprivileged PID namespace isolation (`CLONE_NEWPID`).
+- `src/mountns.c`: Ephemeral in-memory tmpfs mount isolation (`CLONE_NEWNS`).
+- `src/audit.c`: Structured JSON telemetry writer and rusage collector.
+- `src/profile.c`: Declarative configuration profile parser and argument expander.
+- `src/cgroup.c`: cgroups v2 controller setup and process attachment.
+- `tests/`: Automated test suite covering CLI validation, seccomp filters, Landlock mock syscall routing, environment sanitization, process supervision, resource limits, namespaces, output quotas, telemetry, and profiles.
 
 ## License
 
