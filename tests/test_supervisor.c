@@ -20,7 +20,14 @@ int sandbox_landlock_init_paths(char *const *allow_dirs,
     return 0;
 }
 
-int sandbox_seccomp_init(void)
+int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
+{
+    (void)block_net;
+    (void)block_tiocsti;
+    return 0;
+}
+
+int sandbox_seccomp_init_unused(void)
 {
     return 0;
 }

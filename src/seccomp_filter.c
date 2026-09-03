@@ -11,8 +11,17 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+
+#ifndef TIOCSTI
+#define TIOCSTI 0x5412
+#endif
+
+#ifndef TIOCLINUX
+#define TIOCLINUX 0x541C
+#endif
 
 #if defined(__x86_64__)
 #define SECCOMP_AUDIT_ARCH AUDIT_ARCH_X86_64
@@ -28,49 +37,68 @@
 #error "unsupported seccomp architecture"
 #endif
 
-int sandbox_seccomp_init(void)
+int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
 {
+    if (!block_net && !block_tiocsti) {
+        return 0;
+    }
+
     /* security boundary: pr_set_no_new_privs is required before installing unprivileged seccomp filters */
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
         fprintf(stderr, "safe-agent: prctl(PR_SET_NO_NEW_PRIVS) failed: %s\n", strerror(errno));
         return -1;
     }
 
-    struct sock_filter filter[] = {
-        /* kernel abi quirk: validate architecture to prevent cross-arch syscall number confusion */
-        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, arch))),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_AUDIT_ARCH, 1, 0),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
+    struct sock_filter filter[32];
+    size_t idx = 0;
 
-        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+    /* kernel abi quirk: validate architecture to prevent cross-arch syscall number confusion */
+    filter[idx++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, arch)));
+    filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_AUDIT_ARCH, 1, 0);
+    filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS);
+
+    filter[idx++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr)));
 
 #if defined(__x86_64__)
-        /* security boundary: prevent x32 abi syscall evasion on x86_64 */
-        BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000U, 0, 1),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
+    /* security boundary: prevent x32 abi syscall evasion on x86_64 */
+    filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000U, 0, 1);
+    filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS);
 #endif
 
+    if (block_tiocsti) {
+        /* security boundary: prevent terminal injection attacks via tiocsti and tioclinux */
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ioctl, 0, 4);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, args[1])));
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, TIOCSTI, 1, 0);
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, TIOCLINUX, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+        if (block_net) {
+            filter[idx++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr)));
+        }
+    }
+
+    if (block_net) {
         /* security boundary: return eperm instead of kill to match posix permission denial semantics */
 #ifdef __NR_socket
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
 #endif
 
 #ifdef __NR_connect
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
 #endif
 
 #ifdef __NR_bind
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
 #endif
+    }
 
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-    };
+    filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
 
     struct sock_fprog prog = {
-        .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+        .len = (unsigned short)idx,
         .filter = filter,
     };
 
@@ -80,4 +108,9 @@ int sandbox_seccomp_init(void)
     }
 
     return 0;
+}
+
+int sandbox_seccomp_init(void)
+{
+    return sandbox_seccomp_apply(true, false);
 }

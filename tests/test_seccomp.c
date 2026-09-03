@@ -9,15 +9,25 @@
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <termios.h>
 #include <unistd.h>
+
+#ifndef TIOCSTI
+#define TIOCSTI 0x5412
+#endif
+
+#ifndef TIOCLINUX
+#define TIOCLINUX 0x541C
+#endif
 
 int main(void)
 {
     printf("=== Running seccomp-bpf tests ===\n");
 
-    if (sandbox_seccomp_init() < 0) {
-        fprintf(stderr, "FAIL: sandbox_seccomp_init failed: %s\n", strerror(errno));
+    if (sandbox_seccomp_apply(true, true) < 0) {
+        fprintf(stderr, "FAIL: sandbox_seccomp_apply failed: %s\n", strerror(errno));
         return 1;
     }
 
@@ -52,6 +62,25 @@ int main(void)
     assert(b == -1);
     assert(errno == EPERM);
     printf("PASS: bind() trapped with EPERM\n");
+
+    char fake_input = 'x';
+    errno = 0;
+    int res_tiocsti = ioctl(0, TIOCSTI, &fake_input);
+    assert(res_tiocsti == -1);
+    assert(errno == EPERM);
+    printf("PASS: ioctl(TIOCSTI) trapped with EPERM\n");
+
+    int fake_linux_arg = 0;
+    errno = 0;
+    int res_tioclinux = ioctl(0, TIOCLINUX, &fake_linux_arg);
+    assert(res_tioclinux == -1);
+    assert(errno == EPERM);
+    printf("PASS: ioctl(TIOCLINUX) trapped with EPERM\n");
+
+    struct winsize ws;
+    int res_winsz = ioctl(0, TIOCGWINSZ, &ws);
+    (void)res_winsz;
+    printf("PASS: non-restricted ioctl not trapped by filter\n");
 
     pid_t pid = getpid();
     assert(pid > 0);

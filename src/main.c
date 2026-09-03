@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--block-net] [--block-tiocsti] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -48,6 +48,7 @@ int main(int argc, char **argv)
     size_t ro_dir_cap = 0;
 
     bool block_net = false;
+    bool block_tiocsti = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
     struct sandbox_rlimits rlimits = {0};
@@ -146,6 +147,11 @@ int main(int argc, char **argv)
         }
         if (strcmp(argv[i], "--block-net") == 0) {
             block_net = true;
+            i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--block-tiocsti") == 0) {
+            block_tiocsti = true;
             i++;
             continue;
         }
@@ -348,6 +354,7 @@ int main(int argc, char **argv)
         .ro_dirs = ro_dirs,
         .ro_dir_count = ro_dir_count,
         .block_net = block_net,
+        .block_tiocsti = block_tiocsti,
         .clean_env = clean_env,
         .keep_keys = keep_keys,
         .keep_count = keep_count,
