@@ -49,7 +49,7 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
         return -1;
     }
 
-    struct sock_filter filter[32];
+    struct sock_filter filter[64];
     size_t idx = 0;
 
     /* kernel abi quirk: validate architecture to prevent cross-arch syscall number confusion */
@@ -91,6 +91,11 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti)
 
 #ifdef __NR_bind
         filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1);
+        filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
+#endif
+
+#ifdef __NR_socketcall
+        filter[idx++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socketcall, 0, 1);
         filter[idx++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA));
 #endif
     }

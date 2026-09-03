@@ -39,17 +39,22 @@ int sandbox_netns_drop(void)
     }
 
     /* kernel abi quirk: setgroups must be set to deny before unprivileged gid_map can be written */
-    write_file("/proc/self/setgroups", "deny", 4);
+    if (write_file("/proc/self/setgroups", "deny", 4) < 0) {
+        fprintf(stderr, "safe-agent: failed to write /proc/self/setgroups: %s\n", strerror(errno));
+        return -1;
+    }
 
     char map_buf[64];
     int len = snprintf(map_buf, sizeof(map_buf), "%u %u 1\n", (unsigned int)uid, (unsigned int)uid);
-    if (len > 0) {
-        write_file("/proc/self/uid_map", map_buf, (size_t)len);
+    if (len <= 0 || write_file("/proc/self/uid_map", map_buf, (size_t)len) < 0) {
+        fprintf(stderr, "safe-agent: failed to write /proc/self/uid_map: %s\n", strerror(errno));
+        return -1;
     }
 
     len = snprintf(map_buf, sizeof(map_buf), "%u %u 1\n", (unsigned int)gid, (unsigned int)gid);
-    if (len > 0) {
-        write_file("/proc/self/gid_map", map_buf, (size_t)len);
+    if (len <= 0 || write_file("/proc/self/gid_map", map_buf, (size_t)len) < 0) {
+        fprintf(stderr, "safe-agent: failed to write /proc/self/gid_map: %s\n", strerror(errno));
+        return -1;
     }
 
     return 0;

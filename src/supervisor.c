@@ -16,10 +16,11 @@
 static volatile sig_atomic_t g_timed_out = 0;
 static volatile pid_t g_supervised_child = 0;
 
-static void supervisor_sigalrm_handler(int sig)
+static void supervisor_signal_handler(int sig)
 {
-    (void)sig;
-    g_timed_out = 1;
+    if (sig == SIGALRM) {
+        g_timed_out = 1;
+    }
     if (g_supervised_child > 0) {
         /* security boundary: terminate full child process group to prevent orphaned background workers */
         kill(-g_supervised_child, SIGKILL);
@@ -83,11 +84,13 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
     g_supervised_child = 0;
 
     struct sigaction sa = {
-        .sa_handler = supervisor_sigalrm_handler,
+        .sa_handler = supervisor_signal_handler,
     };
     sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGALRM, &sa, NULL) < 0) {
-        fprintf(stderr, "safe-agent: failed to set up timeout handler: %s\n", strerror(errno));
+    if (sigaction(SIGALRM, &sa, NULL) < 0 ||
+        sigaction(SIGINT, &sa, NULL) < 0 ||
+        sigaction(SIGTERM, &sa, NULL) < 0) {
+        fprintf(stderr, "safe-agent: failed to set up signal handlers: %s\n", strerror(errno));
         return 1;
     }
 

@@ -20,22 +20,28 @@ static void print_usage(const char *prog_name)
 
 static int parse_ulong(const char *arg, unsigned long *out)
 {
-    char *endptr = NULL;
-    errno = 0;
-    long val = strtol(arg, &endptr, 10);
-    if (errno != 0 || *endptr != '\0' || val <= 0) {
+    if (!arg || arg[0] < '0' || arg[0] > '9') {
         return -1;
     }
-    *out = (unsigned long)val;
+    char *endptr = NULL;
+    errno = 0;
+    unsigned long val = strtoul(arg, &endptr, 10);
+    if (errno != 0 || *endptr != '\0' || val == 0) {
+        return -1;
+    }
+    *out = val;
     return 0;
 }
 
 static int parse_port(const char *arg, unsigned int *out)
 {
+    if (!arg || arg[0] < '0' || arg[0] > '9') {
+        return -1;
+    }
     char *endptr = NULL;
     errno = 0;
-    long val = strtol(arg, &endptr, 10);
-    if (errno != 0 || *endptr != '\0' || val <= 0 || val > 65535) {
+    unsigned long val = strtoul(arg, &endptr, 10);
+    if (errno != 0 || *endptr != '\0' || val == 0 || val > 65535) {
         return -1;
     }
     *out = (unsigned int)val;
@@ -72,6 +78,7 @@ int main(int argc, char **argv)
     bool block_tiocsti = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
+    bool timeout_set = false;
     struct sandbox_rlimits rlimits = {0};
 
     char **keep_keys = NULL;
@@ -267,6 +274,17 @@ int main(int argc, char **argv)
             continue;
         }
         if (strcmp(argv[i], "--timeout") == 0) {
+            if (timeout_set) {
+                fprintf(stderr, "safe-agent: error: duplicate --timeout option\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(net_connect_ports);
+                free(net_bind_ports);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --timeout requires a seconds argument\n");
                 print_usage(prog_name);
@@ -278,9 +296,8 @@ int main(int argc, char **argv)
                 free(set_pairs);
                 return 1;
             }
-            char *endptr = NULL;
-            long val = strtol(argv[i + 1], &endptr, 10);
-            if (*endptr != '\0' || val <= 0 || val > 86400) {
+            unsigned long val = 0;
+            if (parse_ulong(argv[i + 1], &val) < 0 || val > 86400) {
                 fprintf(stderr, "safe-agent: error: --timeout must be a positive integer between 1 and 86400\n");
                 print_usage(prog_name);
                 free(allow_dirs);
@@ -292,6 +309,7 @@ int main(int argc, char **argv)
                 return 1;
             }
             timeout_seconds = (unsigned int)val;
+            timeout_set = true;
             i += 2;
             continue;
         }
@@ -474,6 +492,19 @@ int main(int argc, char **argv)
 
     if (!command_argv || !command_argv[0] || command_argv[0][0] == '\0') {
         fprintf(stderr, "safe-agent: error: missing command after '--'\n");
+        print_usage(prog_name);
+        free(allow_dirs);
+        free(ro_dirs);
+        free(net_connect_ports);
+        free(net_bind_ports);
+        free(keep_keys);
+        free(set_pairs);
+        return 1;
+    }
+
+    /* security boundary: prevent mutually conflicting network permission requests */
+    if ((block_net || drop_net) && (net_connect_count > 0 || net_bind_count > 0)) {
+        fprintf(stderr, "safe-agent: error: cannot combine network port rules with --block-net or --drop-net\n");
         print_usage(prog_name);
         free(allow_dirs);
         free(ro_dirs);

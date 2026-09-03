@@ -58,7 +58,6 @@ assert_stderr_contains "--allow-dir requires a path argument" "Missing arg messa
 assert_exit 1 "Empty string for --allow-dir" "$BIN" --allow-dir "" -- echo 1
 assert_stderr_contains "--allow-dir path must not be empty" "Empty allow-dir message" "$BIN" --allow-dir "" -- echo 1
 
-
 assert_exit 1 "Missing command after --" "$BIN" --allow-dir /tmp --
 assert_stderr_contains "missing command after '--'" "Missing command message" "$BIN" --allow-dir /tmp --
 
@@ -67,11 +66,6 @@ assert_stderr_contains "missing command after '--'" "Empty command message" "$BI
 
 assert_exit 1 "Unrecognized option" "$BIN" --foo --allow-dir /tmp -- echo 1
 assert_stderr_contains "unrecognized option '--foo'" "Unrecognized option message" "$BIN" --foo --allow-dir /tmp -- echo 1
-
-echo "CLI Tests Completed: $PASS passed, $FAIL failed."
-if [ "$FAIL" -ne 0 ]; then
-    exit 1
-fi
 
 assert_exit 1 "Missing arg to --env" "$BIN" --allow-dir /tmp --env -- echo 1
 assert_stderr_contains "--env requires a KEY=VAL argument" "Missing env arg message" "$BIN" --allow-dir /tmp --env -- echo 1
@@ -87,6 +81,9 @@ assert_stderr_contains "--keep-env requires a valid variable name" "Invalid keep
 
 assert_exit 1 "Missing arg to --timeout" "$BIN" --allow-dir /tmp --timeout -- echo 1
 assert_stderr_contains "--timeout requires a seconds argument" "Missing timeout arg message" "$BIN" --allow-dir /tmp --timeout -- echo 1
+
+assert_exit 1 "Duplicate --timeout" "$BIN" --allow-dir /tmp --timeout 5 --timeout 10 -- echo 1
+assert_stderr_contains "duplicate --timeout option" "Duplicate timeout message" "$BIN" --allow-dir /tmp --timeout 5 --timeout 10 -- echo 1
 
 assert_exit 1 "Invalid zero --timeout" "$BIN" --allow-dir /tmp --timeout 0 -- echo 1
 assert_stderr_contains "--timeout must be a positive integer" "Invalid zero timeout message" "$BIN" --allow-dir /tmp --timeout 0 -- echo 1
@@ -132,3 +129,11 @@ assert_stderr_contains "--allow-net-bind requires a valid port" "Missing bind po
 
 assert_exit 1 "Invalid zero port --allow-net-bind" "$BIN" --allow-dir /tmp --allow-net-bind 0 -- echo 1
 assert_stderr_contains "--allow-net-bind requires a valid port" "Invalid bind port zero" "$BIN" --allow-dir /tmp --allow-net-bind 0 -- echo 1
+
+assert_exit 1 "Conflicting --block-net and --allow-net-connect" "$BIN" --allow-dir /tmp --block-net --allow-net-connect 443 -- echo 1
+assert_stderr_contains "cannot combine network port rules with --block-net or --drop-net" "Conflicting network flags" "$BIN" --allow-dir /tmp --block-net --allow-net-connect 443 -- echo 1
+
+echo "CLI Tests Completed: $PASS passed, $FAIL failed."
+if [ "$FAIL" -ne 0 ]; then
+    exit 1
+fi

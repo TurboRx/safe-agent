@@ -186,7 +186,7 @@ int sandbox_landlock_init_full(char *const *allow_dirs,
     }
 
     /* kernel abi quirk: size of handled_access_fs ensures compatibility across abi v1 through v5 kernels */
-    size_t attr_size = (abi < 4 && net_connect_count == 0 && net_bind_count == 0)
+    size_t attr_size = (net_connect_count == 0 && net_bind_count == 0)
                            ? sizeof(ruleset_attr.handled_access_fs)
                            : sizeof(ruleset_attr);
 
