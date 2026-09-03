@@ -3,10 +3,10 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CPPFLAGS ?= -D_GNU_SOURCE -Iinclude
 
 TARGET = safe-agent
-SRCS = src/main.c src/sandbox.c src/seccomp_filter.c src/env.c src/supervisor.c src/rlimit.c
+SRCS = src/main.c src/sandbox.c src/seccomp_filter.c src/env.c src/supervisor.c src/rlimit.c src/netns.c
 OBJS = $(SRCS:.c=.o)
 
-TEST_BINS = tests/test_seccomp tests/test_landlock_mock tests/test_env tests/test_supervisor tests/test_rlimit
+TEST_BINS = tests/test_seccomp tests/test_landlock_mock tests/test_env tests/test_supervisor tests/test_rlimit tests/test_netns
 
 all: $(TARGET)
 
@@ -25,11 +25,14 @@ tests/test_landlock_mock: src/sandbox.c tests/test_landlock_mock.c include/sandb
 tests/test_env: src/env.c tests/test_env.c include/sandbox.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) src/env.c tests/test_env.c -o $@
 
-tests/test_supervisor: src/supervisor.c src/env.c src/rlimit.c tests/test_supervisor.c include/sandbox.h
-	$(CC) $(CFLAGS) $(CPPFLAGS) src/supervisor.c src/env.c src/rlimit.c tests/test_supervisor.c -o $@
+tests/test_supervisor: src/supervisor.c src/env.c src/rlimit.c src/netns.c tests/test_supervisor.c include/sandbox.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) src/supervisor.c src/env.c src/rlimit.c src/netns.c tests/test_supervisor.c -o $@
 
 tests/test_rlimit: src/rlimit.c tests/test_rlimit.c include/sandbox.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) src/rlimit.c tests/test_rlimit.c -o $@
+
+tests/test_netns: src/netns.c tests/test_netns.c include/sandbox.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) src/netns.c tests/test_netns.c -o $@
 
 test: $(TARGET) $(TEST_BINS)
 	./tests/test_cli.sh
@@ -38,6 +41,7 @@ test: $(TARGET) $(TEST_BINS)
 	./tests/test_env
 	./tests/test_supervisor
 	./tests/test_rlimit
+	./tests/test_netns
 
 clean:
 	rm -f src/*.o $(TARGET) $(TEST_BINS)

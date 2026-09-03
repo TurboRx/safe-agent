@@ -29,6 +29,12 @@ static void supervisor_sigalrm_handler(int sig)
 
 int sandbox_child_execute(const struct sandbox_exec_args *args)
 {
+    if (args->drop_net) {
+        if (sandbox_netns_drop() < 0) {
+            return 1;
+        }
+    }
+
     /* security boundary: pr_set_no_new_privs prevents execvp targets from gaining privileges */
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
         fprintf(stderr, "safe-agent: prctl(PR_SET_NO_NEW_PRIVS) failed: %s\n", strerror(errno));
