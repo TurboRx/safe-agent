@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/landlock.h>
-#include <linux/prctl.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>

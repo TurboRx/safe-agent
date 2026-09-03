@@ -14,7 +14,6 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
-#include <termios.h>
 #include <unistd.h>
 
 #ifndef TIOCSTI

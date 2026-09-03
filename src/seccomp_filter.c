@@ -168,7 +168,3 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys)
     return 0;
 }
 
-int sandbox_seccomp_init(void)
-{
-    return sandbox_seccomp_apply(true, false, false);
-}

@@ -13,27 +13,6 @@ struct sandbox_rlimits {
     unsigned long max_files;
 };
 
-struct sandbox_config {
-    char *const *allow_dirs;
-    size_t allow_dir_count;
-    char *const *ro_dirs;
-    size_t ro_dir_count;
-    char *const *tmpfs_paths;
-    size_t tmpfs_count;
-    const unsigned int *net_connect_ports;
-    size_t net_connect_count;
-    const unsigned int *net_bind_ports;
-    size_t net_bind_count;
-    bool block_net;
-    bool drop_net;
-    bool block_tiocsti;
-    bool harden_sys;
-    bool new_pid;
-    const char *cgroup_path;
-    const char *audit_log_path;
-    char *const *command_argv;
-};
-
 struct sandbox_exec_args {
     char *const *allow_dirs;
     size_t allow_dir_count;
@@ -76,7 +55,6 @@ int sandbox_landlock_init_full(char *const *allow_dirs,
                               const unsigned int *net_bind_ports,
                               size_t net_bind_count);
 
-int sandbox_seccomp_init(void);
 int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys);
 
 int sandbox_netns_drop(void);
