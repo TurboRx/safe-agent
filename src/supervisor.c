@@ -75,9 +75,15 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
 int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args)
 {
-    if (timeout_seconds == 0) {
+    if (timeout_seconds == 0 && !args->new_pid) {
         /* security boundary: when no timeout is set, execute directly without supervisor overhead */
         return sandbox_child_execute(args);
+    }
+
+    if (args->new_pid) {
+        if (sandbox_pidns_unshare() < 0) {
+            return 1;
+        }
     }
 
     g_timed_out = 0;
@@ -118,7 +124,9 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
     }
 
     g_supervised_child = pid;
-    alarm(timeout_seconds);
+    if (timeout_seconds > 0) {
+        alarm(timeout_seconds);
+    }
 
     int status = 0;
     while (waitpid(pid, &status, 0) < 0) {
@@ -129,7 +137,9 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
         return 1;
     }
 
-    alarm(0);
+    if (timeout_seconds > 0) {
+        alarm(0);
+    }
 
     if (g_timed_out) {
         fprintf(stderr, "safe-agent: command timed out after %u second%s\n",

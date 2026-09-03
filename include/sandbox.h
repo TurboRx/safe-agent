@@ -24,6 +24,7 @@ struct sandbox_config {
     bool drop_net;
     bool block_tiocsti;
     bool harden_sys;
+    bool new_pid;
     char *const *command_argv;
 };
 
@@ -40,6 +41,7 @@ struct sandbox_exec_args {
     bool drop_net;
     bool block_tiocsti;
     bool harden_sys;
+    bool new_pid;
     bool clean_env;
     char *const *keep_keys;
     size_t keep_count;
@@ -67,6 +69,7 @@ int sandbox_seccomp_init(void);
 int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys);
 
 int sandbox_netns_drop(void);
+int sandbox_pidns_unshare(void);
 
 int sandbox_env_apply(bool clean_env,
                       char *const *keep_keys,

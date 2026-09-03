@@ -141,3 +141,7 @@ fi
 # test harden-sys flag acceptance
 assert_exit 1 "Harden-sys flag accepted with missing command" "$BIN" --allow-dir /tmp --harden-sys --
 assert_stderr_contains "missing command after '--'" "Harden-sys flag recognized" "$BIN" --allow-dir /tmp --harden-sys --
+
+# test new-pid flag acceptance
+assert_exit 1 "New-pid flag accepted with missing command" "$BIN" --allow-dir /tmp --new-pid --
+assert_stderr_contains "missing command after '--'" "New-pid flag recognized" "$BIN" --allow-dir /tmp --new-pid --

@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -75,6 +75,7 @@ int main(int argc, char **argv)
 
     bool block_net = false;
     bool drop_net = false;
+    bool new_pid = false;
     bool block_tiocsti = false;
     bool harden_sys = false;
     bool clean_env = false;
@@ -266,6 +267,11 @@ int main(int argc, char **argv)
         }
         if (strcmp(argv[i], "--harden-sys") == 0) {
             harden_sys = true;
+            i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--new-pid") == 0) {
+            new_pid = true;
             i++;
             continue;
         }
@@ -532,6 +538,7 @@ int main(int argc, char **argv)
         .net_bind_count = net_bind_count,
         .block_net = block_net,
         .drop_net = drop_net,
+        .new_pid = new_pid,
         .block_tiocsti = block_tiocsti,
         .harden_sys = harden_sys,
         .clean_env = clean_env,
