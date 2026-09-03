@@ -133,10 +133,6 @@ assert_stderr_contains "--allow-net-bind requires a valid port" "Invalid bind po
 assert_exit 1 "Conflicting --block-net and --allow-net-connect" "$BIN" --allow-dir /tmp --block-net --allow-net-connect 443 -- echo 1
 assert_stderr_contains "cannot combine network port rules with --block-net or --drop-net" "Conflicting network flags" "$BIN" --allow-dir /tmp --block-net --allow-net-connect 443 -- echo 1
 
-echo "CLI Tests Completed: $PASS passed, $FAIL failed."
-if [ "$FAIL" -ne 0 ]; then
-    exit 1
-fi
 
 # test harden-sys flag acceptance
 assert_exit 1 "Harden-sys flag accepted with missing command" "$BIN" --allow-dir /tmp --harden-sys --
@@ -195,3 +191,12 @@ assert_stderr_contains "--cgroup path must not be empty" "Empty cgroup message" 
 
 assert_exit 1 "Cgroup flag accepted with missing command" "$BIN" --allow-dir /tmp --cgroup /tmp/cg --
 assert_stderr_contains "missing command after '--'" "Cgroup flag recognized" "$BIN" --allow-dir /tmp --cgroup /tmp/cg --
+
+# test duplicate profile flag
+assert_exit 1 "Duplicate --profile" "$BIN" --profile /tmp/p1.conf --profile /tmp/p2.conf -- echo 1
+assert_stderr_contains "duplicate --profile option" "Duplicate profile message" "$BIN" --profile /tmp/p1.conf --profile /tmp/p2.conf -- echo 1
+
+echo "CLI Tests Completed: $PASS passed, $FAIL failed."
+if [ "$FAIL" -ne 0 ]; then
+    exit 1
+fi

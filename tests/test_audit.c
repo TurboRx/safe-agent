@@ -20,7 +20,7 @@ int main(void)
     close(fd);
 
     char *dirs[] = { "/tmp" };
-    char *cmd[] = { "/bin/true", NULL };
+    char *cmd[] = { "/bin/echo \"test\\quotes\"", NULL };
     struct sandbox_exec_args args = {
         .allow_dirs = dirs,
         .allow_dir_count = 1,
@@ -65,13 +65,13 @@ int main(void)
     fclose(f);
     unlink(log_path);
 
-    assert(strstr(buf, "\"command\": \"/bin/true\"") != NULL);
+    assert(strstr(buf, "\"command\": \"/bin/echo \\\"test\\\\quotes\\\"\"") != NULL);
     assert(strstr(buf, "\"exit_code\": 0") != NULL);
     assert(strstr(buf, "\"max_rss_kb\": 4096") != NULL);
     assert(strstr(buf, "\"min_flt\": 12") != NULL);
     assert(strstr(buf, "\"allow_dir_count\": 1") != NULL);
 
-    printf("PASS: Structured telemetry JSON written with accurate rusage and configuration\n");
+    printf("PASS: Structured telemetry JSON written with accurate rusage and escaped command\n");
     printf("All telemetry audit tests passed successfully.\n");
     return 0;
 }

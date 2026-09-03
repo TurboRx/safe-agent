@@ -8,6 +8,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+
+static bool cli_has_flag(int argc, char **argv, const char *flag)
+{
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--") == 0) {
+            break;
+        }
+        if (strcmp(argv[i], flag) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_argv)
 {
@@ -25,6 +39,10 @@ int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_arg
             break;
         }
         if (strcmp(argv[i], "--profile") == 0) {
+            if (profile_path) {
+                fprintf(stderr, "safe-agent: error: duplicate --profile option\n");
+                return -1;
+            }
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --profile requires a path argument\n");
                 return -1;
@@ -35,7 +53,7 @@ int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_arg
             }
             profile_path = argv[i + 1];
             profile_idx = i;
-            break;
+            i++;
         }
     }
 
@@ -75,13 +93,71 @@ int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_arg
         if (cr) *cr = '\0';
 
         char *eq = strchr(p, '=');
-        char *flag = NULL;
+        char *key = p;
         char *val = NULL;
 
         if (eq) {
             *eq = '\0';
-            val = strdup(eq + 1);
-            if (!val) {
+            char *key_end = eq - 1;
+            while (key_end >= key && (*key_end == ' ' || *key_end == '\t')) {
+                *key_end = '\0';
+                key_end--;
+            }
+
+            char *val_start = eq + 1;
+            while (*val_start == ' ' || *val_start == '\t') val_start++;
+            char *val_end = val_start + strlen(val_start) - 1;
+            while (val_end >= val_start && (*val_end == ' ' || *val_end == '\t')) {
+                *val_end = '\0';
+                val_end--;
+            }
+            if (*val_start != '\0') {
+                val = val_start;
+            }
+        } else {
+            char *key_end = key + strlen(key) - 1;
+            while (key_end >= key && (*key_end == ' ' || *key_end == '\t')) {
+                *key_end = '\0';
+                key_end--;
+            }
+        }
+
+        if (*key == '\0') continue;
+
+        bool is_bool_flag = (strcmp(key, "block-net") == 0 ||
+                             strcmp(key, "drop-net") == 0 ||
+                             strcmp(key, "new-pid") == 0 ||
+                             strcmp(key, "block-tiocsti") == 0 ||
+                             strcmp(key, "harden-sys") == 0 ||
+                             strcmp(key, "clean-env") == 0);
+
+        if (is_bool_flag) {
+            if (val && (strcasecmp(val, "false") == 0 || strcmp(val, "0") == 0 || strcasecmp(val, "no") == 0)) {
+                continue;
+            }
+            val = NULL;
+        } else {
+            bool is_singleton = (strcmp(key, "timeout") == 0 ||
+                                 strcmp(key, "max-output") == 0 ||
+                                 strcmp(key, "max-mem") == 0 ||
+                                 strcmp(key, "max-cpu") == 0 ||
+                                 strcmp(key, "max-procs") == 0 ||
+                                 strcmp(key, "max-files") == 0 ||
+                                 strcmp(key, "audit-log") == 0 ||
+                                 strcmp(key, "cgroup") == 0);
+            if (is_singleton) {
+                char flag_buf[64];
+                snprintf(flag_buf, sizeof(flag_buf), "--%s", key);
+                if (cli_has_flag(argc, argv, flag_buf)) {
+                    continue;
+                }
+            }
+        }
+
+        char *val_dup = NULL;
+        if (val) {
+            val_dup = strdup(val);
+            if (!val_dup) {
                 fclose(f);
                 for (size_t k = 1; k < new_argc; k++) free(new_argv[k]);
                 free(new_argv);
@@ -89,23 +165,23 @@ int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_arg
             }
         }
 
-        size_t flen = strlen(p) + 3;
-        flag = malloc(flen);
+        size_t flen = strlen(key) + 3;
+        char *flag = malloc(flen);
         if (!flag) {
-            free(val);
+            free(val_dup);
             fclose(f);
             for (size_t k = 1; k < new_argc; k++) free(new_argv[k]);
             free(new_argv);
             return -1;
         }
-        snprintf(flag, flen, "--%s", p);
+        snprintf(flag, flen, "--%s", key);
 
         if (new_argc + 2 >= cap) {
             cap *= 2;
             char **tmp = realloc(new_argv, cap * sizeof(char *));
             if (!tmp) {
                 free(flag);
-                free(val);
+                free(val_dup);
                 fclose(f);
                 for (size_t k = 1; k < new_argc; k++) free(new_argv[k]);
                 free(new_argv);
@@ -115,8 +191,8 @@ int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_arg
         }
 
         new_argv[new_argc++] = flag;
-        if (val) {
-            new_argv[new_argc++] = val;
+        if (val_dup) {
+            new_argv[new_argc++] = val_dup;
         }
     }
 

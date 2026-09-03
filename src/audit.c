@@ -8,6 +8,26 @@
 #include <stdio.h>
 #include <string.h>
 
+static void write_escaped_json_string(FILE *f, const char *s)
+{
+    if (!s) return;
+    for (const char *p = s; *p; p++) {
+        if (*p == '"') {
+            fputs("\\\"", f);
+        } else if (*p == '\\') {
+            fputs("\\\\", f);
+        } else if (*p == '\n') {
+            fputs("\\n", f);
+        } else if (*p == '\r') {
+            fputs("\\r", f);
+        } else if (*p == '\t') {
+            fputs("\\t", f);
+        } else {
+            fputc(*p, f);
+        }
+    }
+}
+
 int sandbox_audit_write(const char *path,
                         const struct sandbox_exec_args *args,
                         int exit_code,
@@ -31,7 +51,9 @@ int sandbox_audit_write(const char *path,
     double sys_cpu = (double)ru->ru_stime.tv_sec * 1000.0 + (double)ru->ru_stime.tv_usec / 1000.0;
 
     fprintf(f, "{\n");
-    fprintf(f, "  \"command\": \"%s\",\n", (args->command_argv && args->command_argv[0]) ? args->command_argv[0] : "");
+    fprintf(f, "  \"command\": \"");
+    write_escaped_json_string(f, (args->command_argv && args->command_argv[0]) ? args->command_argv[0] : "");
+    fprintf(f, "\",\n");
     fprintf(f, "  \"exit_code\": %d,\n", exit_code);
     fprintf(f, "  \"term_signal\": %d,\n", term_sig);
     fprintf(f, "  \"timed_out\": %s,\n", timed_out ? "true" : "false");

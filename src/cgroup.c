@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -65,6 +66,10 @@ int sandbox_cgroup_setup(const char *cgroup_path,
     }
 
     if (limits && limits->max_mem_mb > 0) {
+        if (limits->max_mem_mb > ULONG_MAX / (1024UL * 1024UL)) {
+            fprintf(stderr, "safe-agent: max memory value exceeds addressable range\n");
+            return -1;
+        }
         char mem_buf[64];
         unsigned long bytes = limits->max_mem_mb * 1024UL * 1024UL;
         snprintf(mem_buf, sizeof(mem_buf), "%lu\n", bytes);

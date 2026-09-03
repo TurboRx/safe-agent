@@ -117,6 +117,7 @@ static const char *const system_read_paths[] = {
     "/bin",
     "/etc",
     "/lib64",
+    "/dev",
 };
 
 int sandbox_landlock_init_paths(char *const *allow_dirs,

@@ -188,6 +188,9 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
         int open_pipes = 2;
 
         while (open_pipes > 0) {
+            if (g_timed_out) {
+                break;
+            }
             int ret = poll(pfds, 2, -1);
             if (ret < 0) {
                 if (errno == EINTR) continue;
