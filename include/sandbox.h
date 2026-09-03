@@ -16,6 +16,8 @@ struct sandbox_config {
     size_t allow_dir_count;
     char *const *ro_dirs;
     size_t ro_dir_count;
+    char *const *tmpfs_paths;
+    size_t tmpfs_count;
     const unsigned int *net_connect_ports;
     size_t net_connect_count;
     const unsigned int *net_bind_ports;
@@ -33,6 +35,8 @@ struct sandbox_exec_args {
     size_t allow_dir_count;
     char *const *ro_dirs;
     size_t ro_dir_count;
+    char *const *tmpfs_paths;
+    size_t tmpfs_count;
     const unsigned int *net_connect_ports;
     size_t net_connect_count;
     const unsigned int *net_bind_ports;
@@ -70,6 +74,7 @@ int sandbox_seccomp_apply(bool block_net, bool block_tiocsti, bool harden_sys);
 
 int sandbox_netns_drop(void);
 int sandbox_pidns_unshare(void);
+int sandbox_mountns_apply(char *const *tmpfs_paths, size_t tmpfs_count);
 
 int sandbox_env_apply(bool clean_env,
                       char *const *keep_keys,

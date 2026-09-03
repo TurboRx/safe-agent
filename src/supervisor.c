@@ -30,6 +30,12 @@ static void supervisor_signal_handler(int sig)
 
 int sandbox_child_execute(const struct sandbox_exec_args *args)
 {
+    if (args->tmpfs_count > 0) {
+        if (sandbox_mountns_apply(args->tmpfs_paths, args->tmpfs_count) < 0) {
+            return 1;
+        }
+    }
+
     if (args->drop_net) {
         if (sandbox_netns_drop() < 0) {
             return 1;

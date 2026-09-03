@@ -145,3 +145,13 @@ assert_stderr_contains "missing command after '--'" "Harden-sys flag recognized"
 # test new-pid flag acceptance
 assert_exit 1 "New-pid flag accepted with missing command" "$BIN" --allow-dir /tmp --new-pid --
 assert_stderr_contains "missing command after '--'" "New-pid flag recognized" "$BIN" --allow-dir /tmp --new-pid --
+
+# test tmpfs flag
+assert_exit 1 "Missing arg to --tmpfs" "$BIN" --allow-dir /tmp --tmpfs -- echo 1
+assert_stderr_contains "--tmpfs requires a path argument" "Missing tmpfs arg message" "$BIN" --allow-dir /tmp --tmpfs -- echo 1
+
+assert_exit 1 "Empty string for --tmpfs" "$BIN" --allow-dir /tmp --tmpfs "" -- echo 1
+assert_stderr_contains "--tmpfs path must not be empty" "Empty tmpfs message" "$BIN" --allow-dir /tmp --tmpfs "" -- echo 1
+
+assert_exit 1 "Tmpfs flag accepted with missing command" "$BIN" --allow-dir /tmp --tmpfs /tmp --
+assert_stderr_contains "missing command after '--'" "Tmpfs flag recognized" "$BIN" --allow-dir /tmp --tmpfs /tmp --

@@ -14,8 +14,30 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
+}
+
+struct sandbox_allocs {
+    char **allow_dirs;
+    char **ro_dirs;
+    char **tmpfs_paths;
+    unsigned int *net_connect_ports;
+    unsigned int *net_bind_ports;
+    char **keep_keys;
+    char **set_pairs;
+};
+
+static void free_allocs(struct sandbox_allocs *a)
+{
+    if (!a) return;
+    free(a->allow_dirs);
+    free(a->ro_dirs);
+    free(a->tmpfs_paths);
+    free(a->net_connect_ports);
+    free(a->net_bind_ports);
+    free(a->keep_keys);
+    free(a->set_pairs);
 }
 
 static int parse_ulong(const char *arg, unsigned long *out)
@@ -57,21 +79,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    char **allow_dirs = NULL;
-    size_t allow_dir_count = 0;
-    size_t allow_dir_cap = 0;
-
-    char **ro_dirs = NULL;
-    size_t ro_dir_count = 0;
-    size_t ro_dir_cap = 0;
-
-    unsigned int *net_connect_ports = NULL;
-    size_t net_connect_count = 0;
-    size_t net_connect_cap = 0;
-
-    unsigned int *net_bind_ports = NULL;
-    size_t net_bind_count = 0;
-    size_t net_bind_cap = 0;
+    struct sandbox_allocs allocs = {0};
+    size_t allow_dir_count = 0, allow_dir_cap = 0;
+    size_t ro_dir_count = 0, ro_dir_cap = 0;
+    size_t tmpfs_count = 0, tmpfs_cap = 0;
+    size_t net_connect_count = 0, net_connect_cap = 0;
+    size_t net_bind_count = 0, net_bind_cap = 0;
+    size_t keep_count = 0, keep_cap = 0;
+    size_t set_count = 0, set_cap = 0;
 
     bool block_net = false;
     bool drop_net = false;
@@ -82,67 +97,40 @@ int main(int argc, char **argv)
     unsigned int timeout_seconds = 0;
     bool timeout_set = false;
     struct sandbox_rlimits rlimits = {0};
-
-    char **keep_keys = NULL;
-    size_t keep_count = 0;
-    size_t keep_cap = 0;
-    char **set_pairs = NULL;
-    size_t set_count = 0;
-    size_t set_cap = 0;
     char **command_argv = NULL;
 
     int i = 1;
     while (i < argc) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(prog_name);
-            free(allow_dirs);
-            free(ro_dirs);
-            free(net_connect_ports);
-            free(net_bind_ports);
-            free(keep_keys);
-            free(set_pairs);
+            free_allocs(&allocs);
             return 0;
         }
         if (strcmp(argv[i], "--allow-dir") == 0) {
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --allow-dir requires a path argument\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --allow-dir path must not be empty\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (allow_dir_count == allow_dir_cap) {
                 size_t new_cap = (allow_dir_cap == 0) ? 4 : allow_dir_cap * 2;
-                char **tmp = realloc(allow_dirs, new_cap * sizeof(char *));
+                char **tmp = realloc(allocs.allow_dirs, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for allow dirs\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                allow_dirs = tmp;
+                allocs.allow_dirs = tmp;
                 allow_dir_cap = new_cap;
             }
-            allow_dirs[allow_dir_count++] = argv[i + 1];
+            allocs.allow_dirs[allow_dir_count++] = argv[i + 1];
             i += 2;
             continue;
         }
@@ -150,42 +138,55 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --ro-dir requires a path argument\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --ro-dir path must not be empty\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (ro_dir_count == ro_dir_cap) {
                 size_t new_cap = (ro_dir_cap == 0) ? 4 : ro_dir_cap * 2;
-                char **tmp = realloc(ro_dirs, new_cap * sizeof(char *));
+                char **tmp = realloc(allocs.ro_dirs, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for ro dirs\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                ro_dirs = tmp;
+                allocs.ro_dirs = tmp;
                 ro_dir_cap = new_cap;
             }
-            ro_dirs[ro_dir_count++] = argv[i + 1];
+            allocs.ro_dirs[ro_dir_count++] = argv[i + 1];
+            i += 2;
+            continue;
+        }
+        if (strcmp(argv[i], "--tmpfs") == 0) {
+            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --tmpfs requires a path argument\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                return 1;
+            }
+            if (argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --tmpfs path must not be empty\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                return 1;
+            }
+            if (tmpfs_count == tmpfs_cap) {
+                size_t new_cap = (tmpfs_cap == 0) ? 4 : tmpfs_cap * 2;
+                char **tmp = realloc(allocs.tmpfs_paths, new_cap * sizeof(char *));
+                if (!tmp) {
+                    fprintf(stderr, "safe-agent: out of memory for tmpfs paths\n");
+                    free_allocs(&allocs);
+                    return 1;
+                }
+                allocs.tmpfs_paths = tmp;
+                tmpfs_cap = new_cap;
+            }
+            allocs.tmpfs_paths[tmpfs_count++] = argv[i + 1];
             i += 2;
             continue;
         }
@@ -194,31 +195,21 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_port(argv[i + 1], &port) < 0) {
                 fprintf(stderr, "safe-agent: error: --allow-net-connect requires a valid port (1-65535)\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (net_connect_count == net_connect_cap) {
                 size_t new_cap = (net_connect_cap == 0) ? 4 : net_connect_cap * 2;
-                unsigned int *tmp = realloc(net_connect_ports, new_cap * sizeof(unsigned int));
+                unsigned int *tmp = realloc(allocs.net_connect_ports, new_cap * sizeof(unsigned int));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for net connect ports\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                net_connect_ports = tmp;
+                allocs.net_connect_ports = tmp;
                 net_connect_cap = new_cap;
             }
-            net_connect_ports[net_connect_count++] = port;
+            allocs.net_connect_ports[net_connect_count++] = port;
             i += 2;
             continue;
         }
@@ -227,31 +218,21 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_port(argv[i + 1], &port) < 0) {
                 fprintf(stderr, "safe-agent: error: --allow-net-bind requires a valid port (1-65535)\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (net_bind_count == net_bind_cap) {
                 size_t new_cap = (net_bind_cap == 0) ? 4 : net_bind_cap * 2;
-                unsigned int *tmp = realloc(net_bind_ports, new_cap * sizeof(unsigned int));
+                unsigned int *tmp = realloc(allocs.net_bind_ports, new_cap * sizeof(unsigned int));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for net bind ports\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                net_bind_ports = tmp;
+                allocs.net_bind_ports = tmp;
                 net_bind_cap = new_cap;
             }
-            net_bind_ports[net_bind_count++] = port;
+            allocs.net_bind_ports[net_bind_count++] = port;
             i += 2;
             continue;
         }
@@ -265,11 +246,6 @@ int main(int argc, char **argv)
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--harden-sys") == 0) {
-            harden_sys = true;
-            i++;
-            continue;
-        }
         if (strcmp(argv[i], "--new-pid") == 0) {
             new_pid = true;
             i++;
@@ -277,6 +253,11 @@ int main(int argc, char **argv)
         }
         if (strcmp(argv[i], "--block-tiocsti") == 0) {
             block_tiocsti = true;
+            i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--harden-sys") == 0) {
+            harden_sys = true;
             i++;
             continue;
         }
@@ -289,35 +270,20 @@ int main(int argc, char **argv)
             if (timeout_set) {
                 fprintf(stderr, "safe-agent: error: duplicate --timeout option\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --timeout requires a seconds argument\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             unsigned long val = 0;
             if (parse_ulong(argv[i + 1], &val) < 0 || val > 86400) {
                 fprintf(stderr, "safe-agent: error: --timeout must be a positive integer between 1 and 86400\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             timeout_seconds = (unsigned int)val;
@@ -329,12 +295,7 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_mem_mb) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-mem requires a positive integer (mb)\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             i += 2;
@@ -344,12 +305,7 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_cpu_sec) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-cpu requires a positive integer (sec)\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             i += 2;
@@ -359,12 +315,7 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_procs) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-procs requires a positive integer\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             i += 2;
@@ -374,12 +325,7 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_files) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-files requires a positive integer\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             i += 2;
@@ -389,43 +335,28 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --env requires a KEY=VAL argument\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             const char *eq = strchr(argv[i + 1], '=');
             if (!eq || eq == argv[i + 1]) {
                 fprintf(stderr, "safe-agent: error: --env requires format KEY=VAL with non-empty KEY\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (set_count == set_cap) {
                 size_t new_cap = (set_cap == 0) ? 4 : set_cap * 2;
-                char **tmp = realloc(set_pairs, new_cap * sizeof(char *));
+                char **tmp = realloc(allocs.set_pairs, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for env pairs\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                set_pairs = tmp;
+                allocs.set_pairs = tmp;
                 set_cap = new_cap;
             }
-            set_pairs[set_count++] = argv[i + 1];
+            allocs.set_pairs[set_count++] = argv[i + 1];
             i += 2;
             continue;
         }
@@ -433,42 +364,27 @@ int main(int argc, char **argv)
             if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a KEY argument\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (argv[i + 1][0] == '\0' || strchr(argv[i + 1], '=')) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a valid variable name\n");
                 print_usage(prog_name);
-                free(allow_dirs);
-                free(ro_dirs);
-                free(net_connect_ports);
-                free(net_bind_ports);
-                free(keep_keys);
-                free(set_pairs);
+                free_allocs(&allocs);
                 return 1;
             }
             if (keep_count == keep_cap) {
                 size_t new_cap = (keep_cap == 0) ? 4 : keep_cap * 2;
-                char **tmp = realloc(keep_keys, new_cap * sizeof(char *));
+                char **tmp = realloc(allocs.keep_keys, new_cap * sizeof(char *));
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for keep env\n");
-                    free(allow_dirs);
-                    free(ro_dirs);
-                    free(net_connect_ports);
-                    free(net_bind_ports);
-                    free(keep_keys);
-                    free(set_pairs);
+                    free_allocs(&allocs);
                     return 1;
                 }
-                keep_keys = tmp;
+                allocs.keep_keys = tmp;
                 keep_cap = new_cap;
             }
-            keep_keys[keep_count++] = argv[i + 1];
+            allocs.keep_keys[keep_count++] = argv[i + 1];
             i += 2;
             continue;
         }
@@ -481,36 +397,21 @@ int main(int argc, char **argv)
         }
         fprintf(stderr, "safe-agent: error: unrecognized option '%s'\n", argv[i]);
         print_usage(prog_name);
-        free(allow_dirs);
-        free(ro_dirs);
-        free(net_connect_ports);
-        free(net_bind_ports);
-        free(keep_keys);
-        free(set_pairs);
+        free_allocs(&allocs);
         return 1;
     }
 
     if (allow_dir_count == 0) {
         fprintf(stderr, "safe-agent: error: missing required option --allow-dir\n");
         print_usage(prog_name);
-        free(allow_dirs);
-        free(ro_dirs);
-        free(net_connect_ports);
-        free(net_bind_ports);
-        free(keep_keys);
-        free(set_pairs);
+        free_allocs(&allocs);
         return 1;
     }
 
     if (!command_argv || !command_argv[0] || command_argv[0][0] == '\0') {
         fprintf(stderr, "safe-agent: error: missing command after '--'\n");
         print_usage(prog_name);
-        free(allow_dirs);
-        free(ro_dirs);
-        free(net_connect_ports);
-        free(net_bind_ports);
-        free(keep_keys);
-        free(set_pairs);
+        free_allocs(&allocs);
         return 1;
     }
 
@@ -518,23 +419,20 @@ int main(int argc, char **argv)
     if ((block_net || drop_net) && (net_connect_count > 0 || net_bind_count > 0)) {
         fprintf(stderr, "safe-agent: error: cannot combine network port rules with --block-net or --drop-net\n");
         print_usage(prog_name);
-        free(allow_dirs);
-        free(ro_dirs);
-        free(net_connect_ports);
-        free(net_bind_ports);
-        free(keep_keys);
-        free(set_pairs);
+        free_allocs(&allocs);
         return 1;
     }
 
     struct sandbox_exec_args exec_args = {
-        .allow_dirs = allow_dirs,
+        .allow_dirs = allocs.allow_dirs,
         .allow_dir_count = allow_dir_count,
-        .ro_dirs = ro_dirs,
+        .ro_dirs = allocs.ro_dirs,
         .ro_dir_count = ro_dir_count,
-        .net_connect_ports = net_connect_ports,
+        .tmpfs_paths = allocs.tmpfs_paths,
+        .tmpfs_count = tmpfs_count,
+        .net_connect_ports = allocs.net_connect_ports,
         .net_connect_count = net_connect_count,
-        .net_bind_ports = net_bind_ports,
+        .net_bind_ports = allocs.net_bind_ports,
         .net_bind_count = net_bind_count,
         .block_net = block_net,
         .drop_net = drop_net,
@@ -542,9 +440,9 @@ int main(int argc, char **argv)
         .block_tiocsti = block_tiocsti,
         .harden_sys = harden_sys,
         .clean_env = clean_env,
-        .keep_keys = keep_keys,
+        .keep_keys = allocs.keep_keys,
         .keep_count = keep_count,
-        .set_pairs = set_pairs,
+        .set_pairs = allocs.set_pairs,
         .set_count = set_count,
         .rlimits = rlimits,
         .command_argv = command_argv,
@@ -552,12 +450,6 @@ int main(int argc, char **argv)
 
     int exit_code = sandbox_supervisor_execute(timeout_seconds, &exec_args);
 
-    free(allow_dirs);
-    free(ro_dirs);
-    free(net_connect_ports);
-    free(net_bind_ports);
-    free(keep_keys);
-    free(set_pairs);
-
+    free_allocs(&allocs);
     return exit_code;
 }
