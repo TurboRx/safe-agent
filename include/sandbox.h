@@ -4,6 +4,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+struct sandbox_rlimits {
+    unsigned long max_mem_mb;
+    unsigned long max_cpu_sec;
+    unsigned long max_procs;
+    unsigned long max_files;
+};
+
 struct sandbox_config {
     char *const *allow_dirs;
     size_t allow_dir_count;
@@ -24,6 +31,7 @@ struct sandbox_exec_args {
     size_t keep_count;
     char *const *set_pairs;
     size_t set_count;
+    struct sandbox_rlimits rlimits;
     char **command_argv;
 };
 
@@ -40,6 +48,8 @@ int sandbox_env_apply(bool clean_env,
                       size_t keep_count,
                       char *const *set_pairs,
                       size_t set_count);
+
+int sandbox_rlimits_apply(const struct sandbox_rlimits *limits);
 
 int sandbox_child_execute(const struct sandbox_exec_args *args);
 int sandbox_supervisor_execute(unsigned int timeout_seconds,

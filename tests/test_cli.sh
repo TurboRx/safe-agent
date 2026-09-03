@@ -102,3 +102,18 @@ assert_stderr_contains "--ro-dir requires a path argument" "Missing ro-dir arg m
 
 assert_exit 1 "Empty string for --ro-dir" "$BIN" --allow-dir /tmp --ro-dir "" -- echo 1
 assert_stderr_contains "--ro-dir path must not be empty" "Empty ro-dir message" "$BIN" --allow-dir /tmp --ro-dir "" -- echo 1
+
+assert_exit 1 "Missing arg to --max-mem" "$BIN" --allow-dir /tmp --max-mem -- echo 1
+assert_stderr_contains "--max-mem requires a positive integer" "Missing max-mem arg message" "$BIN" --allow-dir /tmp --max-mem -- echo 1
+
+assert_exit 1 "Invalid non-numeric --max-mem" "$BIN" --allow-dir /tmp --max-mem foo -- echo 1
+assert_stderr_contains "--max-mem requires a positive integer" "Invalid max-mem message" "$BIN" --allow-dir /tmp --max-mem foo -- echo 1
+
+assert_exit 1 "Missing arg to --max-cpu" "$BIN" --allow-dir /tmp --max-cpu -- echo 1
+assert_stderr_contains "--max-cpu requires a positive integer" "Missing max-cpu arg message" "$BIN" --allow-dir /tmp --max-cpu -- echo 1
+
+assert_exit 1 "Missing arg to --max-procs" "$BIN" --allow-dir /tmp --max-procs -- echo 1
+assert_stderr_contains "--max-procs requires a positive integer" "Missing max-procs arg message" "$BIN" --allow-dir /tmp --max-procs -- echo 1
+
+assert_exit 1 "Missing arg to --max-files" "$BIN" --allow-dir /tmp --max-files -- echo 1
+assert_stderr_contains "--max-files requires a positive integer" "Missing max-files arg message" "$BIN" --allow-dir /tmp --max-files -- echo 1

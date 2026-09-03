@@ -14,8 +14,20 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--block-net] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
+}
+
+static int parse_ulong(const char *arg, unsigned long *out)
+{
+    char *endptr = NULL;
+    errno = 0;
+    long val = strtol(arg, &endptr, 10);
+    if (errno != 0 || *endptr != '\0' || val <= 0) {
+        return -1;
+    }
+    *out = (unsigned long)val;
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -38,6 +50,8 @@ int main(int argc, char **argv)
     bool block_net = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
+    struct sandbox_rlimits rlimits = {0};
+
     char **keep_keys = NULL;
     size_t keep_count = 0;
     size_t keep_cap = 0;
@@ -165,6 +179,58 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
+        if (strcmp(argv[i], "--max-mem") == 0) {
+            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_mem_mb) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-mem requires a positive integer (mb)\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            i += 2;
+            continue;
+        }
+        if (strcmp(argv[i], "--max-cpu") == 0) {
+            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_cpu_sec) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-cpu requires a positive integer (sec)\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            i += 2;
+            continue;
+        }
+        if (strcmp(argv[i], "--max-procs") == 0) {
+            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_procs) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-procs requires a positive integer\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            i += 2;
+            continue;
+        }
+        if (strcmp(argv[i], "--max-files") == 0) {
+            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_files) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-files requires a positive integer\n");
+                print_usage(prog_name);
+                free(allow_dirs);
+                free(ro_dirs);
+                free(keep_keys);
+                free(set_pairs);
+                return 1;
+            }
+            i += 2;
+            continue;
+        }
         if (strcmp(argv[i], "--env") == 0) {
             if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --env requires a KEY=VAL argument\n");
@@ -287,6 +353,7 @@ int main(int argc, char **argv)
         .keep_count = keep_count,
         .set_pairs = set_pairs,
         .set_count = set_count,
+        .rlimits = rlimits,
         .command_argv = command_argv,
     };
 
