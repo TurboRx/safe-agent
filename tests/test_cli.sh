@@ -165,3 +165,13 @@ assert_stderr_contains "--max-output requires a positive integer" "Invalid max-o
 
 assert_exit 1 "Max-output flag accepted with missing command" "$BIN" --allow-dir /tmp --max-output 1024 --
 assert_stderr_contains "missing command after '--'" "Max-output flag recognized" "$BIN" --allow-dir /tmp --max-output 1024 --
+
+# test audit-log flag
+assert_exit 1 "Missing arg to --audit-log" "$BIN" --allow-dir /tmp --audit-log -- echo 1
+assert_stderr_contains "--audit-log requires a path argument" "Missing audit-log arg message" "$BIN" --allow-dir /tmp --audit-log -- echo 1
+
+assert_exit 1 "Empty string for --audit-log" "$BIN" --allow-dir /tmp --audit-log "" -- echo 1
+assert_stderr_contains "--audit-log path must not be empty" "Empty audit-log message" "$BIN" --allow-dir /tmp --audit-log "" -- echo 1
+
+assert_exit 1 "Audit-log flag accepted with missing command" "$BIN" --allow-dir /tmp --audit-log /tmp/log.json --
+assert_stderr_contains "missing command after '--'" "Audit-log flag recognized" "$BIN" --allow-dir /tmp --audit-log /tmp/log.json --

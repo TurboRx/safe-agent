@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--audit-log <path>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -96,6 +96,7 @@ int main(int argc, char **argv)
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
     size_t max_output_bytes = 0;
+    const char *audit_log_path = NULL;
     bool timeout_set = false;
     struct sandbox_rlimits rlimits = {0};
     char **command_argv = NULL;
@@ -279,6 +280,23 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
+        if (strcmp(argv[i], "--audit-log") == 0) {
+            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --audit-log requires a path argument\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                return 1;
+            }
+            if (argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --audit-log path must not be empty\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                return 1;
+            }
+            audit_log_path = argv[i + 1];
+            i += 2;
+            continue;
+        }
         if (strcmp(argv[i], "--timeout") == 0) {
             if (timeout_set) {
                 fprintf(stderr, "safe-agent: error: duplicate --timeout option\n");
@@ -459,6 +477,7 @@ int main(int argc, char **argv)
         .set_count = set_count,
         .rlimits = rlimits,
         .max_output_bytes = max_output_bytes,
+        .audit_log_path = audit_log_path,
         .command_argv = command_argv,
     };
 

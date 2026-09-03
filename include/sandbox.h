@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <sys/resource.h>
 
 struct sandbox_rlimits {
     unsigned long max_mem_mb;
@@ -27,6 +28,7 @@ struct sandbox_config {
     bool block_tiocsti;
     bool harden_sys;
     bool new_pid;
+    const char *audit_log_path;
     char *const *command_argv;
 };
 
@@ -53,6 +55,7 @@ struct sandbox_exec_args {
     size_t set_count;
     struct sandbox_rlimits rlimits;
     size_t max_output_bytes;
+    const char *audit_log_path;
     char **command_argv;
 };
 
@@ -84,6 +87,15 @@ int sandbox_env_apply(bool clean_env,
                       size_t set_count);
 
 int sandbox_rlimits_apply(const struct sandbox_rlimits *limits);
+
+int sandbox_audit_write(const char *path,
+                        const struct sandbox_exec_args *args,
+                        int exit_code,
+                        int term_sig,
+                        bool timed_out,
+                        bool quota_exceeded,
+                        double wall_ms,
+                        const struct rusage *ru);
 
 int sandbox_child_execute(const struct sandbox_exec_args *args);
 int sandbox_supervisor_execute(unsigned int timeout_seconds,

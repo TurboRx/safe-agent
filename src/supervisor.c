@@ -12,7 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t g_timed_out = 0;
@@ -83,8 +85,8 @@ int sandbox_child_execute(const struct sandbox_exec_args *args)
 int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args)
 {
-    if (timeout_seconds == 0 && !args->new_pid && args->max_output_bytes == 0) {
-        /* security boundary: when no timeout, pid isolation, or output quota is set, execute directly */
+    if (timeout_seconds == 0 && !args->new_pid && args->max_output_bytes == 0 && !args->audit_log_path) {
+        /* security boundary: when no supervisor features are requested, execute directly */
         return sandbox_child_execute(args);
     }
 
@@ -121,6 +123,9 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
         }
         return 1;
     }
+
+    struct timespec ts_start;
+    clock_gettime(CLOCK_MONOTONIC, &ts_start);
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -226,37 +231,47 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
         if (pfds[1].fd >= 0) close(pfds[1].fd);
     }
 
+    struct rusage ru = {0};
     int status = 0;
-    while (waitpid(pid, &status, 0) < 0) {
+    while (wait4(pid, &status, 0, &ru) < 0) {
         if (errno == EINTR) {
             continue;
         }
-        fprintf(stderr, "safe-agent: waitpid failed: %s\n", strerror(errno));
+        fprintf(stderr, "safe-agent: wait4 failed: %s\n", strerror(errno));
         return 1;
     }
+
+    struct timespec ts_end;
+    clock_gettime(CLOCK_MONOTONIC, &ts_end);
+    double wall_ms = (double)(ts_end.tv_sec - ts_start.tv_sec) * 1000.0 +
+                     (double)(ts_end.tv_nsec - ts_start.tv_nsec) / 1000000.0;
 
     if (timeout_seconds > 0) {
         alarm(0);
     }
 
+    int exit_code = 1;
+    int term_sig = 0;
+
     if (quota_exceeded) {
+        exit_code = 125;
         fprintf(stderr, "safe-agent: command exceeded maximum output quota of %zu bytes\n",
                 args->max_output_bytes);
-        return 125;
-    }
-
-    if (g_timed_out) {
+    } else if (g_timed_out) {
+        exit_code = 124;
         fprintf(stderr, "safe-agent: command timed out after %u second%s\n",
                 timeout_seconds, (timeout_seconds == 1) ? "" : "s");
-        return 124;
+    } else if (WIFEXITED(status)) {
+        exit_code = WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+        term_sig = WTERMSIG(status);
+        exit_code = 128 + term_sig;
     }
 
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    if (WIFSIGNALED(status)) {
-        return 128 + WTERMSIG(status);
+    if (args->audit_log_path) {
+        sandbox_audit_write(args->audit_log_path, args, exit_code, term_sig,
+                            g_timed_out != 0, quota_exceeded, wall_ms, &ru);
     }
 
-    return 1;
+    return exit_code;
 }
