@@ -3,10 +3,10 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CPPFLAGS ?= -D_GNU_SOURCE -Iinclude
 
 TARGET = safe-agent
-SRCS = src/main.c src/sandbox.c src/seccomp_filter.c src/env.c src/supervisor.c src/rlimit.c src/netns.c src/pidns.c src/mountns.c src/audit.c
+SRCS = src/main.c src/sandbox.c src/seccomp_filter.c src/env.c src/supervisor.c src/rlimit.c src/netns.c src/pidns.c src/mountns.c src/audit.c src/profile.c
 OBJS = $(SRCS:.c=.o)
 
-TEST_BINS = tests/test_seccomp tests/test_landlock_mock tests/test_env tests/test_supervisor tests/test_rlimit tests/test_netns tests/test_pidns tests/test_mountns tests/test_audit
+TEST_BINS = tests/test_seccomp tests/test_landlock_mock tests/test_env tests/test_supervisor tests/test_rlimit tests/test_netns tests/test_pidns tests/test_mountns tests/test_audit tests/test_profile
 
 all: $(TARGET)
 
@@ -43,6 +43,9 @@ tests/test_mountns: src/mountns.c tests/test_mountns.c include/sandbox.h
 tests/test_audit: src/audit.c tests/test_audit.c include/sandbox.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) src/audit.c tests/test_audit.c -o $@
 
+tests/test_profile: src/profile.c tests/test_profile.c include/sandbox.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) src/profile.c tests/test_profile.c -o $@
+
 test: $(TARGET) $(TEST_BINS)
 	./tests/test_cli.sh
 	./tests/test_seccomp
@@ -54,6 +57,7 @@ test: $(TARGET) $(TEST_BINS)
 	./tests/test_pidns
 	./tests/test_mountns
 	./tests/test_audit
+	./tests/test_profile
 
 clean:
 	rm -f src/*.o $(TARGET) $(TEST_BINS)

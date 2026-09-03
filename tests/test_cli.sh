@@ -175,3 +175,13 @@ assert_stderr_contains "--audit-log path must not be empty" "Empty audit-log mes
 
 assert_exit 1 "Audit-log flag accepted with missing command" "$BIN" --allow-dir /tmp --audit-log /tmp/log.json --
 assert_stderr_contains "missing command after '--'" "Audit-log flag recognized" "$BIN" --allow-dir /tmp --audit-log /tmp/log.json --
+
+# test profile flag
+assert_exit 1 "Missing arg to --profile" "$BIN" --profile -- --allow-dir /tmp -- echo 1
+assert_stderr_contains "--profile requires a path argument" "Missing profile arg message" "$BIN" --profile -- --allow-dir /tmp -- echo 1
+
+assert_exit 1 "Empty string for --profile" "$BIN" --profile "" --allow-dir /tmp -- echo 1
+assert_stderr_contains "--profile path must not be empty" "Empty profile message" "$BIN" --profile "" --allow-dir /tmp -- echo 1
+
+assert_exit 1 "Non-existent profile file" "$BIN" --profile /nonexistent/profile.conf -- echo 1
+assert_stderr_contains "failed to open profile file" "Non-existent profile message" "$BIN" --profile /nonexistent/profile.conf -- echo 1

@@ -102,3 +102,6 @@ int sandbox_supervisor_execute(unsigned int timeout_seconds,
                                const struct sandbox_exec_args *args);
 
 #endif
+
+int sandbox_profile_expand(int argc, char **argv, int *out_argc, char ***out_argv);
+void sandbox_profile_free(int expanded_argc, char **expanded_argv, char **orig_argv);

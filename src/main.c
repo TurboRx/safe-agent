@@ -14,7 +14,7 @@
 static void print_usage(const char *prog_name)
 {
     fprintf(stderr,
-            "usage: %s --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--audit-log <path>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
+            "usage: %s [--profile <path>] --allow-dir <path> [--allow-dir <path>...] [--ro-dir <path>...] [--tmpfs <path>...] [--allow-net-connect <port>...] [--allow-net-bind <port>...] [--block-net] [--drop-net] [--new-pid] [--block-tiocsti] [--harden-sys] [--clean-env] [--env KEY=VAL] [--keep-env KEY] [--timeout <sec>] [--max-output <bytes>] [--audit-log <path>] [--max-mem <mb>] [--max-cpu <sec>] [--max-procs <n>] [--max-files <n>] -- <command> [args...]\n",
             prog_name);
 }
 
@@ -79,6 +79,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    int eff_argc = argc;
+    char **eff_argv = argv;
+    if (sandbox_profile_expand(argc, argv, &eff_argc, &eff_argv) < 0) {
+        return 1;
+    }
+
     struct sandbox_allocs allocs = {0};
     size_t allow_dir_count = 0, allow_dir_cap = 0;
     size_t ro_dir_count = 0, ro_dir_cap = 0;
@@ -95,30 +101,33 @@ int main(int argc, char **argv)
     bool harden_sys = false;
     bool clean_env = false;
     unsigned int timeout_seconds = 0;
+    bool timeout_set = false;
     size_t max_output_bytes = 0;
     const char *audit_log_path = NULL;
-    bool timeout_set = false;
     struct sandbox_rlimits rlimits = {0};
     char **command_argv = NULL;
 
     int i = 1;
-    while (i < argc) {
-        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+    while (i < eff_argc) {
+        if (strcmp(eff_argv[i], "--help") == 0 || strcmp(eff_argv[i], "-h") == 0) {
             print_usage(prog_name);
             free_allocs(&allocs);
+            sandbox_profile_free(eff_argc, eff_argv, argv);
             return 0;
         }
-        if (strcmp(argv[i], "--allow-dir") == 0) {
-            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+        if (strcmp(eff_argv[i], "--allow-dir") == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --allow-dir requires a path argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            if (argv[i + 1][0] == '\0') {
+            if (eff_argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --allow-dir path must not be empty\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (allow_dir_count == allow_dir_cap) {
@@ -127,26 +136,29 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for allow dirs\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.allow_dirs = tmp;
                 allow_dir_cap = new_cap;
             }
-            allocs.allow_dirs[allow_dir_count++] = argv[i + 1];
+            allocs.allow_dirs[allow_dir_count++] = eff_argv[i + 1];
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--ro-dir") == 0) {
-            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+        if (strcmp(eff_argv[i], "--ro-dir") == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --ro-dir requires a path argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            if (argv[i + 1][0] == '\0') {
+            if (eff_argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --ro-dir path must not be empty\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (ro_dir_count == ro_dir_cap) {
@@ -155,26 +167,29 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for ro dirs\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.ro_dirs = tmp;
                 ro_dir_cap = new_cap;
             }
-            allocs.ro_dirs[ro_dir_count++] = argv[i + 1];
+            allocs.ro_dirs[ro_dir_count++] = eff_argv[i + 1];
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--tmpfs") == 0) {
-            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+        if (strcmp(eff_argv[i], "--tmpfs") == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --tmpfs requires a path argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            if (argv[i + 1][0] == '\0') {
+            if (eff_argv[i + 1][0] == '\0') {
                 fprintf(stderr, "safe-agent: error: --tmpfs path must not be empty\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (tmpfs_count == tmpfs_cap) {
@@ -183,21 +198,23 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for tmpfs paths\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.tmpfs_paths = tmp;
                 tmpfs_cap = new_cap;
             }
-            allocs.tmpfs_paths[tmpfs_count++] = argv[i + 1];
+            allocs.tmpfs_paths[tmpfs_count++] = eff_argv[i + 1];
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--allow-net-connect") == 0) {
+        if (strcmp(eff_argv[i], "--allow-net-connect") == 0) {
             unsigned int port = 0;
-            if (i + 1 >= argc || parse_port(argv[i + 1], &port) < 0) {
+            if (i + 1 >= eff_argc || parse_port(eff_argv[i + 1], &port) < 0) {
                 fprintf(stderr, "safe-agent: error: --allow-net-connect requires a valid port (1-65535)\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (net_connect_count == net_connect_cap) {
@@ -206,6 +223,7 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for net connect ports\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.net_connect_ports = tmp;
@@ -215,12 +233,13 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--allow-net-bind") == 0) {
+        if (strcmp(eff_argv[i], "--allow-net-bind") == 0) {
             unsigned int port = 0;
-            if (i + 1 >= argc || parse_port(argv[i + 1], &port) < 0) {
+            if (i + 1 >= eff_argc || parse_port(eff_argv[i + 1], &port) < 0) {
                 fprintf(stderr, "safe-agent: error: --allow-net-bind requires a valid port (1-65535)\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (net_bind_count == net_bind_cap) {
@@ -229,6 +248,7 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for net bind ports\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.net_bind_ports = tmp;
@@ -238,83 +258,57 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--block-net") == 0) {
+        if (strcmp(eff_argv[i], "--block-net") == 0) {
             block_net = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--drop-net") == 0) {
+        if (strcmp(eff_argv[i], "--drop-net") == 0) {
             drop_net = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--new-pid") == 0) {
+        if (strcmp(eff_argv[i], "--new-pid") == 0) {
             new_pid = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--block-tiocsti") == 0) {
+        if (strcmp(eff_argv[i], "--block-tiocsti") == 0) {
             block_tiocsti = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--harden-sys") == 0) {
+        if (strcmp(eff_argv[i], "--harden-sys") == 0) {
             harden_sys = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--clean-env") == 0) {
+        if (strcmp(eff_argv[i], "--clean-env") == 0) {
             clean_env = true;
             i++;
             continue;
         }
-        if (strcmp(argv[i], "--max-output") == 0) {
-            unsigned long val = 0;
-            if (i + 1 >= argc || parse_ulong(argv[i + 1], &val) < 0) {
-                fprintf(stderr, "safe-agent: error: --max-output requires a positive integer (bytes)\n");
-                print_usage(prog_name);
-                free_allocs(&allocs);
-                return 1;
-            }
-            max_output_bytes = (size_t)val;
-            i += 2;
-            continue;
-        }
-        if (strcmp(argv[i], "--audit-log") == 0) {
-            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
-                fprintf(stderr, "safe-agent: error: --audit-log requires a path argument\n");
-                print_usage(prog_name);
-                free_allocs(&allocs);
-                return 1;
-            }
-            if (argv[i + 1][0] == '\0') {
-                fprintf(stderr, "safe-agent: error: --audit-log path must not be empty\n");
-                print_usage(prog_name);
-                free_allocs(&allocs);
-                return 1;
-            }
-            audit_log_path = argv[i + 1];
-            i += 2;
-            continue;
-        }
-        if (strcmp(argv[i], "--timeout") == 0) {
+        if (strcmp(eff_argv[i], "--timeout") == 0) {
             if (timeout_set) {
                 fprintf(stderr, "safe-agent: error: duplicate --timeout option\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            if (i + 1 >= argc || strncmp(argv[i + 1], "--", 2) == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
                 fprintf(stderr, "safe-agent: error: --timeout requires a seconds argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             unsigned long val = 0;
-            if (parse_ulong(argv[i + 1], &val) < 0 || val > 86400) {
+            if (parse_ulong(eff_argv[i + 1], &val) < 0 || val > 86400) {
                 fprintf(stderr, "safe-agent: error: --timeout must be a positive integer between 1 and 86400\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             timeout_seconds = (unsigned int)val;
@@ -322,58 +316,96 @@ int main(int argc, char **argv)
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--max-mem") == 0) {
-            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_mem_mb) < 0) {
+        if (strcmp(eff_argv[i], "--max-output") == 0) {
+            unsigned long val = 0;
+            if (i + 1 >= eff_argc || parse_ulong(eff_argv[i + 1], &val) < 0) {
+                fprintf(stderr, "safe-agent: error: --max-output requires a positive integer (bytes)\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
+                return 1;
+            }
+            max_output_bytes = (size_t)val;
+            i += 2;
+            continue;
+        }
+        if (strcmp(eff_argv[i], "--audit-log") == 0) {
+            if (i + 1 >= eff_argc || strncmp(eff_argv[i + 1], "--", 2) == 0) {
+                fprintf(stderr, "safe-agent: error: --audit-log requires a path argument\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
+                return 1;
+            }
+            if (eff_argv[i + 1][0] == '\0') {
+                fprintf(stderr, "safe-agent: error: --audit-log path must not be empty\n");
+                print_usage(prog_name);
+                free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
+                return 1;
+            }
+            audit_log_path = eff_argv[i + 1];
+            i += 2;
+            continue;
+        }
+        if (strcmp(eff_argv[i], "--max-mem") == 0) {
+            if (i + 1 >= eff_argc || parse_ulong(eff_argv[i + 1], &rlimits.max_mem_mb) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-mem requires a positive integer (mb)\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--max-cpu") == 0) {
-            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_cpu_sec) < 0) {
+        if (strcmp(eff_argv[i], "--max-cpu") == 0) {
+            if (i + 1 >= eff_argc || parse_ulong(eff_argv[i + 1], &rlimits.max_cpu_sec) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-cpu requires a positive integer (sec)\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--max-procs") == 0) {
-            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_procs) < 0) {
+        if (strcmp(eff_argv[i], "--max-procs") == 0) {
+            if (i + 1 >= eff_argc || parse_ulong(eff_argv[i + 1], &rlimits.max_procs) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-procs requires a positive integer\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--max-files") == 0) {
-            if (i + 1 >= argc || parse_ulong(argv[i + 1], &rlimits.max_files) < 0) {
+        if (strcmp(eff_argv[i], "--max-files") == 0) {
+            if (i + 1 >= eff_argc || parse_ulong(eff_argv[i + 1], &rlimits.max_files) < 0) {
                 fprintf(stderr, "safe-agent: error: --max-files requires a positive integer\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--env") == 0) {
-            if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
+        if (strcmp(eff_argv[i], "--env") == 0) {
+            if (i + 1 >= eff_argc || strcmp(eff_argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --env requires a KEY=VAL argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            const char *eq = strchr(argv[i + 1], '=');
-            if (!eq || eq == argv[i + 1]) {
+            const char *eq = strchr(eff_argv[i + 1], '=');
+            if (!eq || eq == eff_argv[i + 1]) {
                 fprintf(stderr, "safe-agent: error: --env requires format KEY=VAL with non-empty KEY\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (set_count == set_cap) {
@@ -382,26 +414,29 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for env pairs\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.set_pairs = tmp;
                 set_cap = new_cap;
             }
-            allocs.set_pairs[set_count++] = argv[i + 1];
+            allocs.set_pairs[set_count++] = eff_argv[i + 1];
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--keep-env") == 0) {
-            if (i + 1 >= argc || strcmp(argv[i + 1], "--") == 0) {
+        if (strcmp(eff_argv[i], "--keep-env") == 0) {
+            if (i + 1 >= eff_argc || strcmp(eff_argv[i + 1], "--") == 0) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a KEY argument\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
-            if (argv[i + 1][0] == '\0' || strchr(argv[i + 1], '=')) {
+            if (eff_argv[i + 1][0] == '\0' || strchr(eff_argv[i + 1], '=')) {
                 fprintf(stderr, "safe-agent: error: --keep-env requires a valid variable name\n");
                 print_usage(prog_name);
                 free_allocs(&allocs);
+                sandbox_profile_free(eff_argc, eff_argv, argv);
                 return 1;
             }
             if (keep_count == keep_cap) {
@@ -410,25 +445,27 @@ int main(int argc, char **argv)
                 if (!tmp) {
                     fprintf(stderr, "safe-agent: out of memory for keep env\n");
                     free_allocs(&allocs);
+                    sandbox_profile_free(eff_argc, eff_argv, argv);
                     return 1;
                 }
                 allocs.keep_keys = tmp;
                 keep_cap = new_cap;
             }
-            allocs.keep_keys[keep_count++] = argv[i + 1];
+            allocs.keep_keys[keep_count++] = eff_argv[i + 1];
             i += 2;
             continue;
         }
-        if (strcmp(argv[i], "--") == 0) {
+        if (strcmp(eff_argv[i], "--") == 0) {
             i++;
-            if (i < argc) {
-                command_argv = &argv[i];
+            if (i < eff_argc) {
+                command_argv = &eff_argv[i];
             }
             break;
         }
-        fprintf(stderr, "safe-agent: error: unrecognized option '%s'\n", argv[i]);
+        fprintf(stderr, "safe-agent: error: unrecognized option '%s'\n", eff_argv[i]);
         print_usage(prog_name);
         free_allocs(&allocs);
+        sandbox_profile_free(eff_argc, eff_argv, argv);
         return 1;
     }
 
@@ -436,6 +473,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "safe-agent: error: missing required option --allow-dir\n");
         print_usage(prog_name);
         free_allocs(&allocs);
+        sandbox_profile_free(eff_argc, eff_argv, argv);
         return 1;
     }
 
@@ -443,6 +481,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "safe-agent: error: missing command after '--'\n");
         print_usage(prog_name);
         free_allocs(&allocs);
+        sandbox_profile_free(eff_argc, eff_argv, argv);
         return 1;
     }
 
@@ -451,6 +490,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "safe-agent: error: cannot combine network port rules with --block-net or --drop-net\n");
         print_usage(prog_name);
         free_allocs(&allocs);
+        sandbox_profile_free(eff_argc, eff_argv, argv);
         return 1;
     }
 
@@ -484,5 +524,6 @@ int main(int argc, char **argv)
     int exit_code = sandbox_supervisor_execute(timeout_seconds, &exec_args);
 
     free_allocs(&allocs);
+    sandbox_profile_free(eff_argc, eff_argv, argv);
     return exit_code;
 }
